@@ -10,10 +10,13 @@ url = "http://localhost:8086"
 """
 TODO: 
 1. Think of datastore to efficiently retrieve data from cache. Should be able to take slice of previous data easily.
-    a. Arrays? With each index corresponding to a datapoint
+    a. Arrays? With each index corresponding to a timestamp.
         i. Then we need to find way to index the array based on time. 
         ii. for each entry received from previous data, we store in array and store the index of each entry.
-        iii. Client returns data in CSV format.  
+        iii. Client returns data in CSV format. Need to parse this into entries
+        iv. What about missing indicies which are technically in the DB? do we approximate or do we re-fetch?
+        v. Binary search to find time slices? 
+
     b. Pandas dataframe?
 """
 testShortQuery = """from(bucket: "Test")
@@ -40,22 +43,17 @@ def health():
 def query():
     data = (request.data)
     query = data.decode("utf-8")
-    print(query)
     #query = data['query']
     if query in queryCache:
         #print("Fetching from cache")
         response = query_api.query_raw(testShortQuery, org="Realtime")        
         return queryCache[query]
     else:
-        #print("Fetching from DB")
         response = query_api.query_raw(query, org="Realtime")
-        tables = query_api._to_tables(response, query_options=query_api._get_query_options())
-        print(len(tables))
-        #for table in tables:
-            #print(table.records)
+        #tables = query_api._to_tables(response, query_options=query_api._get_query_options())
         queryCache[query] = response
         return response
-            
+    
 
 
 if __name__ == '__main__':
