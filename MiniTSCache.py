@@ -6,6 +6,11 @@ if we have time stamp of 7 -> we want from 5 onwards
 (7 - 5 // 5) -> 0
 if we have time stamp of 11 -> we want from 10 onwards 
 (11 - 5) // 5 -> 1
+
+TODO: Think of way to handle empty data. Assumption in implementation is that data is always present and consistent.
+However, sometimes if data is not produced, timestamp of first value returned from query will be higher than the start time of the query.
+This means that consecutive queries will cause a cache miss since firstTime > queryStart.
+Maybe we can fill with null values
 '''
 class CacheEntry:
     def __init__(self, key, start, end, aggWindow, data):
@@ -50,7 +55,7 @@ class MiniTSCache:
     def insert(self, requestJson, result):
         key = CacheKeyGen.getKey(requestJson)
         if key in self.cache:
-            print("setting cache")
+            print("setting cache", result)
             self.set(key, result, requestJson)
         else:
             print("creating cache entry")

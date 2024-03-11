@@ -4,7 +4,8 @@ import influxdb_client, os, time
 from queryDSL import InfluxQueryBuilder, QueryAggregation, QueryFilter
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from MiniTSCache import MiniTSCache
-from FluxTableUtils import combineTableLists
+from FluxTableUtils import combineTableLists, fillMissingData
+from MiniTSCache import CacheKeyGen
 
 token = "NVRAh0Hy9gLvSJVlIaYVRIP5MTktlqBHCOGxpgzIOHdSD-fu2vGjug5NmMcTv2QvH7BK6XG0tQvaoPXUWmuvLQ=="
 org = "Realtime"
@@ -68,6 +69,7 @@ def query():
     if not cacheResult:
         print("Not cached, fetching from InfluxDB")
         response = query_api.query(queryString, org="Realtime")
+        #newData = fillMissingData(response, queryBuilder.range.start, queryBuilder.range.end, queryBuilder.aggregate.getTimeWindowSeconds())
         tsCache.insert(requestJson, response)
         return response.to_json()
     else:
@@ -83,6 +85,7 @@ def query():
             queryString = queryBuilder.build()
             response = query_api.query(queryString, org="Realtime")
             newData = combineTableLists(cacheResult.data, response, cacheResult.appendStart)
+            #newData = fillMissingData(response, queryBuilder.range.start, queryBuilder.range.end, queryBuilder.aggregate.getTimeWindowSeconds())
             tsCache.insert(requestJson, newData)
             return newData.to_json()
 

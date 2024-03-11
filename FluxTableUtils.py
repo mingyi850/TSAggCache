@@ -1,6 +1,7 @@
 from influxdb_client import QueryApi, FluxResponse
 from influxdb_client.client.flux_table import FluxTable, TableList
 from datetime import datetime
+import copy
 
 def getFluxTableSlice(table: FluxTable, startIdx: int, endIdx: int) -> FluxTable:
     """Get a slice of a FluxTable."""
@@ -50,6 +51,38 @@ def fromJson(json: dict) -> TableList:
         for record in table["records"]:
             fluxTable.records.append(FluxRecord(record))
         tableList.append(fluxTable)
+    return tableList
+
+#Experimental feature - can turn off
+def fillMissingData(tableList: TableList, start: int, end: int, aggWindow: int) -> TableList:
+    """Fill missing data in a TableList."""
+    for table in tableList:
+        firstRecord = table.records[0]
+        firstRecordTime = toTimestamp(firstRecord.get_time())
+        timeDiff = firstRecordTime - start
+        if timeDiff > aggWindow:
+            numEntries = timeDiff // aggWindow + 1
+            print("Filling records from start", numEntries, firstRecordTime, start, aggWindow)
+            newRecords = []
+            for i in range(numEntries, 0, -1):
+                newRecord = copy.copy(firstRecord)
+                newRecord["_time"] = datetime.fromtimestamp(firstRecordTime - i * aggWindow)
+                newRecord["_value"] = None
+                newRecords.append(newRecord)
+            table.records = newRecords + table.records
+
+        lastRecord = table.records[-1]
+        lastRecordTime = toTimestamp(lastRecord.get_time())
+        timeDiff = end - lastRecordTime
+        if timeDiff > aggWindow:
+            numEntries = timeDiff // aggWindow + 1
+            newRecords = []
+            for i in range(1, numEntries):
+                newRecord = copy.copy(lastRecord)
+                newRecord["_time"] = datetime.fromtimestamp(lastRecordTime + i * aggWindow)
+                newRecord["_value"] = None
+                newRecords.append(newRecord)
+            table.records.extend(newRecords)
     return tableList
     
     
