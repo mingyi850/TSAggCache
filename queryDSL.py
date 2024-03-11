@@ -120,6 +120,11 @@ class QueryAggregation:
     @staticmethod
     def fromJson(json):
         return QueryAggregation(json["timeWindow"], json["aggFunc"], json["createEmpty"])
+    
+    def getTimeWindowSeconds(self):
+        unit = self.timeWindow[-1]
+        remaining = int(self.timeWindow[:-1])
+        return remaining * InfluxQueryBuilder.getUnitConversion(unit)
 
 class Range:
     def __init__(self, start: int, end: int):
@@ -183,11 +188,12 @@ class InfluxQueryBuilder:
         remaining = int(time[:-1])
         print("unit", unit)
         print("remaining", remaining)
-        result = remaining * self.getUnitConversion(unit)
+        result = remaining * InfluxQueryBuilder.getUnitConversion(unit)
         print("result", result)
         return result
 
-    def getUnitConversion(self, unit) -> int:
+    @staticmethod
+    def getUnitConversion(unit) -> int:
         if unit == "s":
             return 1
         elif unit == "m":

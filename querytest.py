@@ -76,26 +76,29 @@ for i in range(runs):
    #query2
    start = time.time()
    query4Str = InfluxQueryBuilder.fromJson(query4Json).build()
-   tables2 = query_api.query_raw(query4Str, org="Realtime").data
+   tables2 = query_api.query(query4Str, org="Realtime").to_json()
    elapsed = time.time() - start
    without2.append(elapsed)
-   #cached
-   start = time.time()
-   result = requests.post(cacheUrlRaw, data=query4).text
-   elapsed = time.time() - start
-   cached.append(elapsed)
    #cachedJson
    start = time.time()
    result = requests.post(cacheUrlJson, json=query4Json).text
    elapsed = time.time() - start
    cached.append(elapsed)
 
-print(tables1.to_json())
+#print(tables1.to_json())
+print(query3Json)
 for table in tables1:
     for record in table.records:
-        print(record.get_time(), record.get_value())
+        print(record.get_time().timestamp(), record.get_value())
+
+print("Cache result")
+#print(result)
+
+#print("Values")
+#print(tables1.to_values(columns=['table', '_time', '_value']))
 print(len(tables1))
 print(len(tables2))
+print(len(result))
 print("Without cache: avg", sum(without)/len(without), "seconds")
 print("Without cache, query2: avg", sum(without2)/len(without2), "seconds")
 print("With cache: avg", sum(cached)/len(cached), "seconds")

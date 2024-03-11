@@ -3,6 +3,8 @@ from flask import Flask, jsonify, request
 import influxdb_client, os, time
 from queryDSL import InfluxQueryBuilder, QueryAggregation, QueryFilter
 from influxdb_client import InfluxDBClient, Point, WritePrecision
+from MiniTSCache import MiniTSCache
+from FluxTableUtils import combineTableLists
 
 token = "NVRAh0Hy9gLvSJVlIaYVRIP5MTktlqBHCOGxpgzIOHdSD-fu2vGjug5NmMcTv2QvH7BK6XG0tQvaoPXUWmuvLQ=="
 org = "Realtime"
@@ -35,6 +37,7 @@ app = Flask('queryServer')
 app.request_class.charset = None
 
 queryCache = dict()
+tsCache = MiniTSCache()
 
 @app.route('/api/health', methods=['GET'])
 def health():
@@ -57,17 +60,31 @@ def queryRaw():
     
 @app.route('/api/query', methods=['POST'])
 def query():
-    print(request.data.decode('utf-8'))
-    data = json.loads(request.data)
-    queryBuilder = InfluxQueryBuilder.fromJson(data)
+    #print(request.data.decode('utf-8'))
+    requestJson = json.loads(request.data)
+    queryBuilder = InfluxQueryBuilder.fromJson(requestJson)
     queryString = queryBuilder.build()
-    if queryString in queryCache:
-        response = query_api.query_raw(testShortQuery, org="Realtime")        
-        return queryCache[query]
+    cacheResult = tsCache.get(requestJson)
+    if not cacheResult:
+        print("Not cached, fetching from InfluxDB")
+        response = query_api.query(queryString, org="Realtime")
+        tsCache.insert(requestJson, response)
+        return response.to_json()
     else:
-        response = query_api.query_raw(queryString, org="Realtime")
-        queryCache[queryString] = response
-        return response
+        queryStart = cacheResult.queryStart
+        queryEnd = cacheResult.queryEnd
+        print(f"Cached, fetching reduced time slice from InfluxDB \nNew: Start: {queryStart} \nEnd: {queryEnd}\nOriginal: Start: {queryBuilder.range.start} \nEnd: {queryBuilder.range.end}")
+        if queryStart == -1 and queryEnd == -1:
+            print("Complete cache match, returning directly from cache")
+            return cacheResult.data.to_json()
+        else:
+            queryBuilder.range.start = queryStart
+            queryBuilder.range.end = queryEnd
+            queryString = queryBuilder.build()
+            response = query_api.query(queryString, org="Realtime")
+            newData = combineTableLists(cacheResult.data, response, cacheResult.appendStart)
+            tsCache.insert(requestJson, newData)
+            return newData.to_json()
     
     
 
