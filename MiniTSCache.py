@@ -38,6 +38,7 @@ class MiniTSCache:
         self.cache[key].data = result
         endTime = toTimestamp(getEndTime(result))
         secondEndTime = toTimestamp(getSecondEndTime(result))
+        # required adjustment - last timestamp from query will be the end time of the query. If last timestamp only encapsulates 40 seconds of data, first timestamp returned will increased by 20s
         adjustment = CacheKeyGen.getAggregationWindow(requestJson) - (endTime - secondEndTime) + 1
         self.cache[key].start = toTimestamp(getStartTime(result)) - adjustment
         self.cache[key].end = endTime
