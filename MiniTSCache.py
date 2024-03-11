@@ -34,15 +34,19 @@ class MiniTSCache:
     def __init__(self):
         self.cache = dict()
 
-    def set(self, key, result):
+    def set(self, key, result, requestJson):
         self.cache[key].data = result
-        self.cache[key].start = toTimestamp(getStartTime(result))
-        self.cache[key].end = toTimestamp(getEndTime(result))
+        endTime = toTimestamp(getEndTime(result))
+        secondEndTime = toTimestamp(getSecondEndTime(result))
+        adjustment = CacheKeyGen.getAggregationWindow(requestJson) - (endTime - secondEndTime) + 1
+        self.cache[key].start = toTimestamp(getStartTime(result)) - adjustment
+        self.cache[key].end = endTime
+
 
     def insert(self, requestJson, result):
         key = CacheKeyGen.getKey(requestJson)
         if key in self.cache:
-            self.set(key, result)
+            self.set(key, result, requestJson)
         else:
             entry = CacheEntry(key, toTimestamp(getStartTime(result)), toTimestamp(getEndTime(result)), CacheKeyGen.getAggregation(requestJson).getTimeWindowSeconds(), result)
             self.cache[key] = entry
@@ -107,6 +111,10 @@ class CacheKeyGen:
     @staticmethod
     def getAggregation(json) -> QueryAggregation:
         return QueryAggregation.fromJson(json["aggregate"])
+    
+    @staticmethod
+    def getAggregationWindow(json) -> int:
+        return CacheKeyGen.getAggregation(json).getTimeWindowSeconds()
     
     @staticmethod
     def getAggKey(json) -> QueryAggregation:
