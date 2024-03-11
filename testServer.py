@@ -1,6 +1,7 @@
 import json
 from flask import Flask, jsonify, request
 import influxdb_client, os, time
+from queryDSL import InfluxQueryBuilder, QueryAggregation, QueryFilter
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 
 token = "NVRAh0Hy9gLvSJVlIaYVRIP5MTktlqBHCOGxpgzIOHdSD-fu2vGjug5NmMcTv2QvH7BK6XG0tQvaoPXUWmuvLQ=="
@@ -39,8 +40,8 @@ queryCache = dict()
 def health():
     return jsonify({"status": "ok"})
 
-@app.route('/api/query', methods=['POST'])
-def query():
+@app.route('/api/queryraw', methods=['POST'])
+def queryRaw():
     data = (request.data)
     query = data.decode("utf-8")
     #query = data['query']
@@ -53,6 +54,21 @@ def query():
         #tables = query_api._to_tables(response, query_options=query_api._get_query_options())
         queryCache[query] = response
         return response
+    
+@app.route('/api/query', methods=['POST'])
+def query():
+    print(request.data.decode('utf-8'))
+    data = json.loads(request.data)
+    queryBuilder = InfluxQueryBuilder.fromJson(data)
+    queryString = queryBuilder.build()
+    if queryString in queryCache:
+        response = query_api.query_raw(testShortQuery, org="Realtime")        
+        return queryCache[query]
+    else:
+        response = query_api.query_raw(queryString, org="Realtime")
+        queryCache[queryString] = response
+        return response
+    
     
 
 

@@ -1,6 +1,7 @@
 
 from typing import List, Iterator, Optional
 import time 
+import json
 
 class BaseQueryFilter:
     def toString(self):
@@ -8,6 +9,20 @@ class BaseQueryFilter:
     
     def toJson(self):
         pass
+
+    def toKey(self):
+        pass
+
+    @staticmethod
+    def fromJson(json):
+        type = json["type"]
+        if type == 'raw':
+            return QueryFilter(json["key"], json["value"])
+        elif type == 'or':
+            return OrQueryFilter.fromJson(json)
+        elif type == 'and':
+            return AndQueryFilter.fromJson(json)
+        
 
 class QueryFilter(BaseQueryFilter):
     def __init__(self, key, value):
@@ -20,19 +35,23 @@ class QueryFilter(BaseQueryFilter):
     def toJson(self):
         return {
             "key": self.key,
-            "value": self.value
+            "value": self.value,
+            "type": "raw"
         }
+    
+    def toKey(self):
+        return "raw(" + self.key + "," + self.value + ")"
 
     def OR(self, other: 'QueryFilter'):
-        return OrQueryFilter(self, other)
+        return OrQueryFilter([self, other])
     
     def AND(self, other: 'QueryFilter'):
-        return AndQueryFilter(self, other)
+        return AndQueryFilter([self, other])
     
     
 class OrQueryFilter(BaseQueryFilter):
-    def __init__(self, queryFilter1: BaseQueryFilter, queryFilter2: BaseQueryFilter):
-        self.filters = [queryFilter1, queryFilter2]
+    def __init__(self, filters: List[BaseQueryFilter]):
+        self.filters = filters
 
     def OR(self, other: 'QueryFilter'):
         self.filters.append(other)
@@ -42,17 +61,23 @@ class OrQueryFilter(BaseQueryFilter):
         filterFn = " or ".join([f'r["{f.key}"] == "{f.value}"' for f in self.filters])
         return f'filter(fn: (r) => {filterFn})'
     
-    
-    
     def toJson(self):
         return {
-            "filters": [f.toJson() for f in self.filters],
+            "filter": [f.toJson() for f in self.filters],
             "type": "or"
         }
     
+    @staticmethod
+    def fromJson(json):
+        filters = [BaseQueryFilter.fromJson(f) for f in json["filter"]]
+        return OrQueryFilter(filters)
+    
+    def toKey(self):
+        return "or(" + ",".join([f.toKey() for f in self.filters]) + ")"
+    
 class AndQueryFilter(BaseQueryFilter):
-    def __init__(self, queryFilter1: BaseQueryFilter, queryFilter2: BaseQueryFilter):
-        self.filters = [queryFilter1, queryFilter2]
+    def __init__(self, filters: List[BaseQueryFilter]):
+        self.filters = filters
 
     def AND(self, other: 'QueryFilter'):
         self.filters.append(other)
@@ -64,9 +89,17 @@ class AndQueryFilter(BaseQueryFilter):
     
     def toJson(self):
         return {
-            "filters": [f.toJson() for f in self.filters],
+            "filter": [f.toJson() for f in self.filters],
             "type": "and"
         }
+    
+    def toKey(self):
+        return "and(" + ",".join([f.toKey() for f in self.filters]) + ")"
+    
+    @staticmethod
+    def fromJson(json):
+        filters = [BaseQueryFilter.fromJson(f) for f in json["filter"]]
+        return AndQueryFilter(filters)
     
 class QueryAggregation:
     def __init__(self, timeWindow: str, aggFunc: str, createEmpty: bool):
@@ -83,6 +116,10 @@ class QueryAggregation:
             "aggFunc": self.aggFunc,
             "createEmpty": self.createEmpty
         }
+    
+    @staticmethod
+    def fromJson(json):
+        return QueryAggregation(json["timeWindow"], json["aggFunc"], json["createEmpty"])
 
 class Range:
     def __init__(self, start: int, end: int):
@@ -100,6 +137,10 @@ class Range:
             "start": self.start,
             "end": self.end
         }
+    
+    @staticmethod
+    def fromJson(json):
+        return Range(json["start"], json["end"])
     
 class InfluxQueryBuilder:
     def __init__(self):
@@ -193,6 +234,17 @@ class InfluxQueryBuilder:
         if self.aggregate is not None:
             queryJson["aggregate"] = self.aggregate.toJson()
         return queryJson
+    
+    @staticmethod
+    def fromJson(json) -> 'InfluxQueryBuilder':
+        builder = InfluxQueryBuilder()
+        builder.bucket = json["bucket"]
+        builder.range = Range.fromJson(json["range"])
+        builder.filters = [BaseQueryFilter.fromJson(f) for f in json["filters"]]
+        if "aggregate" in json:
+            builder.aggregate = QueryAggregation.fromJson(json["aggregate"])
+        builder.yield_name = json["yield"]
+        return builder
 
 
 if __name__ == "__main__":
@@ -209,5 +261,6 @@ if __name__ == "__main__":
     queryJson = builder.buildJson()
     
     print(queryStr)
-    print(queryJson)
+    print(json.dumps(queryJson))
+    print(InfluxQueryBuilder.fromJson(queryJson).build())
     

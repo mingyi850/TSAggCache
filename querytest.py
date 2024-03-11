@@ -6,7 +6,8 @@ from queryDSL import InfluxQueryBuilder, QueryAggregation, QueryFilter
 token = "NVRAh0Hy9gLvSJVlIaYVRIP5MTktlqBHCOGxpgzIOHdSD-fu2vGjug5NmMcTv2QvH7BK6XG0tQvaoPXUWmuvLQ=="
 org = "Realtime"
 url = "http://localhost:8086"
-cacheUrl = "http://127.0.0.1:5000/api/query"
+cacheUrlRaw = "http://127.0.0.1:5000/api/queryRaw"
+cacheUrlJson = "http://127.0.0.1:5000/api/query"
 client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
 
 query_api = client.query_api()
@@ -35,14 +36,7 @@ query2 = """from(bucket: "Test")
   |> aggregateWindow(every: 1m, fn: median, createEmpty: false)
   |> yield(name: "median")"""
 
-query3 = """from(bucket: "Test")
-|> range(start: 1709460754, stop: 1710060754)
-|> filter(fn: (r) => r["platform"] == "mac_os")
-|> filter(fn: (r) => r["platform"] == "windows")
-|> aggregateWindow(every: 1m, fn: median, createEmpty: False)
-|> yield(name: median)"""
-
-builder = (InfluxQueryBuilder()
+query3Builder = (InfluxQueryBuilder()
              .withBucket("Test")
              .withFilter(QueryFilter("_measurement", "cpu_usage"))
              .withFilter(QueryFilter("_field", "value"))
@@ -51,7 +45,20 @@ builder = (InfluxQueryBuilder()
              .withRelativeRange('10m', None)
              .withYield("median")
     )
-query3 = builder.build()
+
+query4Builder = (InfluxQueryBuilder()
+              .withBucket("Test")
+              .withFilter(QueryFilter("_measurement", "cpu_usage"))
+              .withFilter(QueryFilter("_field", "value"))
+              .withFilter(QueryFilter("platform", "mac_os").OR(QueryFilter("platform", "windows")))
+              .withAggregate(QueryAggregation("1m", "median", False))
+              .withRelativeRange('180m', None)
+              .withYield("median")
+      )
+query3 = query3Builder.build()
+query4 = query4Builder.build()
+query3Json = query3Builder.buildJson()
+query4Json = query4Builder.buildJson()
 
 print(query)
 print(query3)
@@ -62,17 +69,24 @@ without2 = []
 cached = []
 for i in range(runs):
    start = time.time()
-   tables1 = query_api.query(query3, org="Realtime")
+   query3Str = InfluxQueryBuilder.fromJson(query3Json).build()
+   tables1 = query_api.query(query3Str, org="Realtime")
    elapsed = time.time() - start
    without.append(elapsed)
    #query2
    start = time.time()
-   tables2 = query_api.query_raw(query2, org="Realtime").data
+   query4Str = InfluxQueryBuilder.fromJson(query4Json).build()
+   tables2 = query_api.query_raw(query4Str, org="Realtime").data
    elapsed = time.time() - start
    without2.append(elapsed)
    #cached
    start = time.time()
-   result = requests.post(cacheUrl, data=query2).text
+   result = requests.post(cacheUrlRaw, data=query4).text
+   elapsed = time.time() - start
+   cached.append(elapsed)
+   #cachedJson
+   start = time.time()
+   result = requests.post(cacheUrlJson, json=query4Json).text
    elapsed = time.time() - start
    cached.append(elapsed)
 
