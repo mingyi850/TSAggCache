@@ -13,7 +13,7 @@ class CacheEntry:
         self.start = start
         self.end = end
         self.aggWindow = aggWindow
-        self.data = []
+        self.data = data
 
     def __repr__(self):
         return f"CacheEntry({self.key}, {self.start}, {self.end}, {self.aggWindow}, {self.data})"
@@ -34,6 +34,9 @@ class MiniTSCache:
     def __init__(self):
         self.cache = dict()
 
+    def reset(self):
+        self.cache = dict()
+
     def set(self, key, result, requestJson):
         self.cache[key].data = result
         endTime = toTimestamp(getEndTime(result))
@@ -47,9 +50,13 @@ class MiniTSCache:
     def insert(self, requestJson, result):
         key = CacheKeyGen.getKey(requestJson)
         if key in self.cache:
+            print("setting cache")
             self.set(key, result, requestJson)
         else:
+            print("creating cache entry")
+            print("Result to set: ", result)
             entry = CacheEntry(key, toTimestamp(getStartTime(result)), toTimestamp(getEndTime(result)), CacheKeyGen.getAggregation(requestJson).getTimeWindowSeconds(), result)
+            print(entry)
             self.cache[key] = entry
 
     def get(self, json):
@@ -63,8 +70,9 @@ class MiniTSCache:
         appendStart = False
         if key in self.cache:
             entry = self.cache[key]
-            print("Cache hit", entry.start, entry.end, json.get("range"))
+            print("Cache hit", entry.start, entry.end, start, end)
             if len(entry.data) == 0:
+                print("No data found in entry despite hit")
                 return None
             if start >= entry.start and end <= entry.end:
                 startIndex = (start - entry.start) // entry.aggWindow

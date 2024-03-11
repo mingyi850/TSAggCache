@@ -2,6 +2,7 @@ import influxdb_client, os, time
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 import requests
 from queryDSL import InfluxQueryBuilder, QueryAggregation, QueryFilter
+import json
 
 token = "NVRAh0Hy9gLvSJVlIaYVRIP5MTktlqBHCOGxpgzIOHdSD-fu2vGjug5NmMcTv2QvH7BK6XG0tQvaoPXUWmuvLQ=="
 org = "Realtime"
@@ -51,7 +52,7 @@ query4Builder = (InfluxQueryBuilder()
               .withFilter(QueryFilter("_measurement", "cpu_usage"))
               .withFilter(QueryFilter("_field", "value"))
               .withFilter(QueryFilter("platform", "mac_os").OR(QueryFilter("platform", "windows")))
-              .withAggregate(QueryAggregation("1m", "median", False))
+              .withAggregate(QueryAggregation("1m", "mean", False))
               .withRelativeRange('180m', None)
               .withYield("median")
       )
@@ -64,6 +65,7 @@ print(query)
 print(query3)
 
 runs = 10
+delay = 0
 without = []
 without2 = []
 cached = []
@@ -80,10 +82,12 @@ for i in range(runs):
    elapsed = time.time() - start
    without2.append(elapsed)
    #cachedJson
+   query4Json = query4Builder.buildJson()
    start = time.time()
-   result = requests.post(cacheUrlJson, json=query4Json).text
+   result = requests.post(cacheUrlJson, json=query4Json).json()
    elapsed = time.time() - start
    cached.append(elapsed)
+   time.sleep(delay)
 
 #print(tables1.to_json())
 print(query3Json)
@@ -91,9 +95,15 @@ for table in tables1:
     for record in table.records:
         print(record.get_time().timestamp(), record.get_value())
 
-print("Cache result")
+#print("Cache result")
 #print(result)
-
+print("JSON")
+print(tables1.to_json())
+print(json.loads(tables1.to_json()))
+print("COLUMNS")
+print(tables1[0].columns)
+print("RECORDS")
+print(tables1[1].records)
 #print("Values")
 #print(tables1.to_values(columns=['table', '_time', '_value']))
 print(len(tables1))
@@ -102,3 +112,6 @@ print(len(result))
 print("Without cache: avg", sum(without)/len(without), "seconds")
 print("Without cache, query2: avg", sum(without2)/len(without2), "seconds")
 print("With cache: avg", sum(cached)/len(cached), "seconds")
+
+#Plots 
+import matplotlib.pyplot as plt

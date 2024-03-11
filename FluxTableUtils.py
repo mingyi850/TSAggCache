@@ -41,7 +41,16 @@ def combineTableLists(original: TableList, new: TableList, appendStart: bool) ->
             original[i].records = new[i].records + original[i].records
     return original
 
-        
+def fromJson(json: dict) -> TableList:
+    """Deserialize a TableList from a JSON object."""
+    tableList = TableList()
+    for table in json:
+        fluxTable = FluxTable()
+        fluxTable.columns = table["columns"]
+        for record in table["records"]:
+            fluxTable.records.append(FluxRecord(record))
+        tableList.append(fluxTable)
+    return tableList
     
     
 #TODO: Add deserialization logic for TableList and FluxTable for comparison to check correctness

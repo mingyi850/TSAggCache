@@ -85,6 +85,11 @@ def query():
             newData = combineTableLists(cacheResult.data, response, cacheResult.appendStart)
             tsCache.insert(requestJson, newData)
             return newData.to_json()
+
+@app.route('/api/reset', methods=['POST'])   
+def resetCache():
+    tsCache.reset()
+    return jsonify({"status": "ok"})
     
     
 

@@ -126,6 +126,11 @@ class QueryAggregation:
         remaining = int(self.timeWindow[:-1])
         return remaining * InfluxQueryBuilder.getUnitConversion(unit)
 
+class RelativeRange:
+    def __init__(self, fr: str, to: Optional[str]):
+        self.fr = fr
+        self.to = to
+
 class Range:
     def __init__(self, start: int, end: int):
         self.start = start
@@ -149,7 +154,8 @@ class Range:
     
 class InfluxQueryBuilder:
     def __init__(self):
-        self.range = ""
+        self.range = None
+        self.relativeRange = None
         self.bucket = ""
         self.filters = []
         self.aggregate = None
@@ -174,22 +180,22 @@ class InfluxQueryBuilder:
         return self
     
     def withRelativeRange(self, fr: str, to: Optional[str]) -> 'InfluxQueryBuilder':
+        self.relativeRange = RelativeRange(fr, to)
+        return self
+    
+    def getRangeFromRelative(self) -> Range:
         now = int(time.time())
-        start = now - self._parseTime(fr)
-        if to is not None:
-            end = now - self._parseTime(to)
+        start = now - self._parseTime(self.relativeRange.fr)
+        if self.relativeRange.to is not None:
+            end = now - self._parseTime(self.relativeRange.to)
         else:
             end = now
-        self.range = Range(start, end)
-        return self
+        return Range(start, end)
     
     def _parseTime(self, time: str) -> int:
         unit = time[-1]
         remaining = int(time[:-1])
-        print("unit", unit)
-        print("remaining", remaining)
         result = remaining * InfluxQueryBuilder.getUnitConversion(unit)
-        print("result", result)
         return result
 
     @staticmethod
@@ -216,10 +222,11 @@ class InfluxQueryBuilder:
     
     def build(self):
         assert self.bucket != "", "Bucket is required"
-        assert self.range != "", "Range is required"
+        assert not (self.range is None and self.relativeRange is None), "Range or relative range is required"
+        range = self.range if self.range is not None else self.getRangeFromRelative()
         queryString = ""
         queryString += f'from(bucket: "{self.bucket}")\n'
-        queryString += "|> " + self.range.toString() + "\n"
+        queryString += "|> " + range.toString() + "\n"
         for f in self.filters:
             queryString += "|> " + f.toString() + "\n"
         if self.aggregate is not None:
@@ -230,10 +237,11 @@ class InfluxQueryBuilder:
     
     def buildJson(self):
         assert self.bucket != "", "Bucket is required"
-        assert self.range != "", "Range is required"
+        assert not (self.range is None and self.relativeRange is None), "Range or relative range is required"
+        range = self.range if self.range is not None else self.getRangeFromRelative()
         queryJson = {
             "bucket": self.bucket,
-            "range": self.range.toJson(),
+            "range": range.toJson(),
             "filters": [f.toJson() for f in self.filters],
             "yield": self.yield_name
         }
