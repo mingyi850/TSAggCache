@@ -1,18 +1,8 @@
+from typing import Set
 from queryDSL import InfluxQueryBuilder, QueryAggregation, BaseQueryFilter, Range
-from FluxTableUtils import getTableListSliced, toTimestamp, getStartTime, getEndTime, getSecondEndTime
+from FluxTableUtils import getTableKeys, getTableListSliced, toTimestamp, getStartTime, getEndTime, getSecondEndTime
 from InverseIndex import InverseIndex
-'''
-[5, 10, 15, 20, 25] 
-if we have time stamp of 7 -> we want from 5 onwards 
-(7 - 5 // 5) -> 0
-if we have time stamp of 11 -> we want from 10 onwards 
-(11 - 5) // 5 -> 1
 
-TODO: Think of way to handle empty data. Assumption in implementation is that data is always present and consistent.
-However, sometimes if data is not produced, timestamp of first value returned from query will be higher than the start time of the query.
-This means that consecutive queries will cause a cache miss since firstTime > queryStart.
-Maybe we can fill with null values
-'''
 class CacheEntry:
     def __init__(self, key, start, end, aggWindow, data):
         self.key = key
@@ -48,26 +38,26 @@ class MiniTSCache:
         endTime = toTimestamp(getEndTime(result))
         secondEndTime = toTimestamp(getSecondEndTime(result))
         # required adjustment - last timestamp from query will be the end time of the query. If last timestamp only encapsulates 40 seconds of data, first timestamp returned will increased by 20s
-        adjustment = CacheKeyGen.getAggregationWindow(requestJson) - (endTime - secondEndTime) + 1
+        adjustment = CacheKeyGenv2.getAggregationWindow(requestJson) - (endTime - secondEndTime) + 1
         self.cache[key].start = toTimestamp(getStartTime(result)) - adjustment
         self.cache[key].end = endTime
 
 
     def insert(self, requestJson, result):
-        key = CacheKeyGen.getKey(requestJson)
+        key = CacheKeyGenv2.getKey(requestJson)
         if key in self.cache:
             print("setting cache", result)
             self.set(key, result, requestJson)
         else:
             print("creating cache entry")
             print("Result to set: ", result)
-            entry = CacheEntry(key, toTimestamp(getStartTime(result)), toTimestamp(getEndTime(result)), CacheKeyGen.getAggregation(requestJson).getTimeWindowSeconds(), result)
+            entry = CacheEntry(key, toTimestamp(getStartTime(result)), toTimestamp(getEndTime(result)), CacheKeyGenv2.getAggregation(requestJson).getTimeWindowSeconds(), result)
             print(entry)
             self.cache[key] = entry
 
     def get(self, json):
-        key = CacheKeyGen.getKey(json)
-        range = CacheKeyGen.getRange(json)
+        key = CacheKeyGenv2.getKey(json)
+        range = CacheKeyGenv2.getRange(json)
         start = range.start
         end = range.end
 
@@ -104,25 +94,87 @@ class MiniTSCache:
         else:
             return None
 
+class RangeResult:
+    def __init__(self, fluxTable, aggIntervalInt, complete=False):
+        if fluxTable is None:
+            self.complete = False
+            self.data = None
+            self.start = -1
+            self.end = -1
+        else:
+            self.start = toTimestamp(getStartTime(fluxTable)) - aggIntervalInt
+            self.end = toTimestamp(getEndTime(fluxTable))
+            self.data = fluxTable
+            self.complete = complete
+        
+    def __repr__(self):
+        return f"RangeResult({self.start}, {self.end})"
+    
+    def __eq__(self, other):
+        return self.start == other.start and self.end == other.end
+#Denotes a series of points with a fixed combination of keys. Wrapper around a FluxTable
+class Series:
+    def __init__(self, fluxTable, queryStart: int, queryEnd: int, aggWindow: int):
+        self.keys = getTableKeys(fluxTable)
+        self.data = []
+        self.queryStart = queryStart
+        self.queryEnd = queryEnd
+        self.dataStart = toTimestamp(getStartTime(fluxTable))
+        self.dataEnd = toTimestamp(getEndTime(fluxTable))
+        self.aggWindow = aggWindow
+    
+    def set(self, data, queryStart, queryEnd):
+        self.queryStart = min(queryStart, self.queryStart)
+        self.queryEnd = max(queryEnd, self.queryEnd)
+        self.dataStart = toTimestamp(getStartTime(data))
+        self.dataEnd = toTimestamp(getEndTime(data)) 
+        self.data = data
+
+    def getRange(self, start, end):
+        if start >= self.queryStart and end <= self.queryEnd:
+            return RangeResult(getTableListSliced(self.data, (start - self.queryStart) // self.aggWindow, (end - self.queryStart) // self.aggWindow), self.aggWindow, True)
+        elif start < self.queryStart and end <= self.queryEnd:
+            endIndex = (end - self.dataStart) // self.aggWindow
+            return RangeResult(getTableListSliced(self.data, 1, endIndex), self.aggWindow)
+        elif start >= self.queryStart and end > self.queryEnd:
+            startIndex = (start - self.dataStart) // self.aggWindow
+            return RangeResult(getTableListSliced(self.data, startIndex, -1), self.aggWindow)
+        else:
+            return RangeResult(None, self.aggWindow)
+        
+    
+    def getKeys(self):
+        return self.keys
+    
     
 
-class CacheKeyGen:
+#Denotes a single bucket in the cache. This is the primary entrypoint in the cache. Cross-bucket searches are not allowed
+class Bucket:
+    def __init__(self, key):
+        self.key = key
+        # Holds a list of Series data
+        self.data = []
+        self.inverseIndex = InverseIndex()
+    
+    def findMatchingSeries(self, filter):
+        return self.inverseIndex.search(filter)
+        
+    def fetchData(self, dataKeys: Set[int]):
+        return [self.data[key] for key in dataKeys]
+    
+
+        
+
+    
+
+class CacheKeyGenv2:
     @staticmethod
     def getKey(json) -> str:
-        return CacheKeyGen.getBucketKey(json) + CacheKeyGen.getFiltersKey(json) + CacheKeyGen.getYield(json) + CacheKeyGen.getAggKey(json)
+        return CacheKeyGenv2.getBucketKey(json)
 
     @staticmethod
     def getBucketKey(json: str) -> str:
         return json["bucket"]
-    
-    @staticmethod
-    def getFiltersKey(json) -> str:
-        filterList = [BaseQueryFilter.fromJson(f) for f in json["filters"]]
-        return ",".join([f.toKey() for f in filterList])
-    
-    @staticmethod
-    def getYield(json) -> str:
-        return json["yield"]
     
     @staticmethod
     def getAggregation(json) -> QueryAggregation:
@@ -130,11 +182,7 @@ class CacheKeyGen:
     
     @staticmethod
     def getAggregationWindow(json) -> int:
-        return CacheKeyGen.getAggregation(json).getTimeWindowSeconds()
-    
-    @staticmethod
-    def getAggKey(json) -> QueryAggregation:
-        return json["aggregate"]["timeWindow"] + json["aggregate"]["aggFunc"] + str(json["aggregate"]["createEmpty"])
+        return CacheKeyGenv2.getAggregation(json).getTimeWindowSeconds()
     
     @staticmethod
     def getRange(json) -> Range:

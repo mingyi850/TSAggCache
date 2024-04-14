@@ -18,15 +18,32 @@ while True:
   point = (
     Point("cpu_usage")
     .tag("platform", "mac_os")
+    .tag("host", "host1")
     .field("value", psutil.cpu_percent())
   )
   point2 = (
     Point("cpu_usage")
     .tag("platform", "windows")
+    .tag("host", "host1")
     .field("value", psutil.cpu_percent() + np.random.normal(0, 10))
+
+  )
+  point3 = (
+    Point("cpu_usage")
+    .tag("platform", "mac_os")
+    .tag("host", "host2")
+    .field("value", psutil.cpu_percent() - np.random.normal(0, 10))
+  )
+  point4 = (
+    Point("cpu_usage")
+    .tag("platform", "windows")
+    .tag("host", "host2")
+    .field("value", psutil.cpu_percent() + np.random.normal(10, 20))
 
   )
   write_api.write(bucket=bucket, org="Realtime", record=point)
   write_api.write(bucket=bucket, org="Realtime", record=point2)
+  write_api.write(bucket=bucket, org="Realtime", record=point3)
+  write_api.write(bucket=bucket, org="Realtime", record=point4)
   print("wrote points to DB")
   time.sleep(2) # separate points by 1 second

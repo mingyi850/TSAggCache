@@ -58,13 +58,28 @@ def queryRaw():
         #tables = query_api._to_tables(response, query_options=query_api._get_query_options())
         queryCache[query] = response
         return response
-    
+
+"""
+Takes in a request with a JSON body containing query parameters
+Example:
+{   "bucket": "Test", 
+    "range": {"start": 1712955813, "end": 1712956413}, 
+    "filters": [
+        {"key": "_measurement", "value": "cpu_usage", "type": "raw"}, 
+        {"filter": [{"key": "platform", "value": "mac_os", "type": "raw"}, 
+        {"key": "platform", "value": "windows", "type": "raw"}], "type": "or"}
+    ], 
+    "yield": "median",
+    "aggregate": {"timeWindow": "1m", "aggFunc": "median", "createEmpty": false}
+}
+Returns a json containing Table data from influxDB
+"""
 @app.route('/api/query', methods=['POST'])
 def query():
     #print(request.data.decode('utf-8'))
     requestJson = json.loads(request.data)
     queryBuilder = InfluxQueryBuilder.fromJson(requestJson)
-    queryString = queryBuilder.build()
+    queryString = queryBuilder.buildFluxStr()
     cacheResult = tsCache.get(requestJson)
     if not cacheResult:
         print("Not cached, fetching from InfluxDB")
@@ -78,15 +93,18 @@ def query():
         print(f"Cached, fetching reduced time slice from InfluxDB \nNew: Start: {queryStart} \nEnd: {queryEnd}\nOriginal: Start: {queryBuilder.range.start} \nEnd: {queryBuilder.range.end}")
         if queryStart == -1 and queryEnd == -1:
             print("Complete cache match, returning directly from cache")
+            print("Returning table list of length", len(cacheResult.data[0].records))
             return cacheResult.data.to_json()
         else:
+            print("Partial hit, fetching from InfluxDB")
             queryBuilder.range.start = queryStart
             queryBuilder.range.end = queryEnd
-            queryString = queryBuilder.build()
+            queryString = queryBuilder.buildFluxStr()
             response = query_api.query(queryString, org="Realtime")
             newData = combineTableLists(cacheResult.data, response, cacheResult.appendStart)
             #newData = fillMissingData(response, queryBuilder.range.start, queryBuilder.range.end, queryBuilder.aggregate.getTimeWindowSeconds())
             tsCache.insert(requestJson, newData)
+            print("Returning table list of length", len(newData))
             return newData.to_json()
 
 @app.route('/api/reset', methods=['POST'])   

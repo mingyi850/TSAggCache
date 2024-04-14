@@ -107,7 +107,7 @@ class QueryAggregation:
         self.aggFunc = aggFunc
         self.createEmpty = createEmpty
 
-    def toString(self):
+    def toFluxString(self):
         return f'aggregateWindow(every: {self.timeWindow}, fn: {self.aggFunc}, createEmpty: {str(self.createEmpty).lower()})'
     
     def toJson(self):
@@ -130,6 +130,23 @@ class RelativeRange:
     def __init__(self, fr: str, to: Optional[str]):
         self.fr = fr
         self.to = to
+
+    def toInfluxQLString(self):
+        returnStr = ""
+        returnStr += f'time > now() - {self.fr}'
+        if self.to is not None:
+            returnStr += f' AND time < now() - {self.to}'
+        return returnStr
+    
+    def toJson(self):
+        return {
+            "fr": self.fr,
+            "to": self.to
+        }
+
+    @staticmethod
+    def fromJson(json):
+        return RelativeRange(json["fr"], json["to"])
 
 class Range:
     def __init__(self, start: int, end: int):
@@ -156,10 +173,21 @@ class InfluxQueryBuilder:
     def __init__(self):
         self.range = None
         self.relativeRange = None
+        self.measurements = [] #Required for influxQL
         self.bucket = ""
         self.filters = []
         self.aggregate = None
-        yield_name = ""
+        self.table = None #Required for influxQL
+        self.groupKeys = []
+        self.yield_name = ""
+
+    def withGroupKeys(self, keys: str) -> 'InfluxQueryBuilder':
+        self.groupKeys.extend(keys)
+        return self
+    
+    def withMeasurements(self, measurements: str) -> 'InfluxQueryBuilder':
+        self.measurements.extend(measurements)
+        return self
 
     def withBucket(self, bucket: str) -> 'InfluxQueryBuilder':
         self.bucket = bucket
@@ -169,7 +197,11 @@ class InfluxQueryBuilder:
         self.filters.append(filter)
         return self
     
-    def withAggregate(self, aggregate: str) -> 'InfluxQueryBuilder':
+    def withTable(self, table: str) -> 'InfluxQueryBuilder':
+        self.table = table
+        return self
+    
+    def withAggregate(self, aggregate: QueryAggregation) -> 'InfluxQueryBuilder':
         self.aggregate = aggregate
         return self
     
@@ -220,7 +252,7 @@ class InfluxQueryBuilder:
         self.yield_name = name
         return self
     
-    def build(self):
+    def buildFluxStr(self):
         assert self.bucket != "", "Bucket is required"
         assert not (self.range is None and self.relativeRange is None), "Range or relative range is required"
         range = self.range if self.range is not None else self.getRangeFromRelative()
@@ -230,9 +262,47 @@ class InfluxQueryBuilder:
         for f in self.filters:
             queryString += "|> " + f.toString() + "\n"
         if self.aggregate is not None:
-            queryString += "|> " + self.aggregate.toString() + "\n"
+            queryString += "|> " + self.aggregate.toFluxString() + "\n"
         if self.yield_name != "":
             queryString += "|> yield(name: " + f'"{self.yield_name}"' + ")"
+        return queryString
+    
+    def getAggregateMeasurements(self):
+        if self.aggregate is not None:
+            return ", ".join([f"{self.aggregate.aggFunc}({m}) as {m}" for m in self.measurements])
+        else:
+            return ", ".join(self.measurements)
+    
+    def parseFilter(self, filter: BaseQueryFilter) -> str:
+        if isinstance(filter, QueryFilter):
+            return f"{filter.key} = '{filter.value}'"
+        elif isinstance(filter, OrQueryFilter):
+            return " OR ".join([self.parseFilter(f) for f in filter.filters])
+        elif isinstance(filter, AndQueryFilter):
+            return " AND ".join([self.parseFilter(f) for f in filter.filters])
+        
+    def parseFilters(self, filters: List[BaseQueryFilter]) -> str:
+        return " AND ".join([self.parseFilter(f) for f in filters])
+    
+    def getGroupByInflux(self):
+        queryStr = ""
+        if self.aggregate is not None and self.groupKeys != []:
+            queryStr += f'GROUP BY time({self.aggregate.timeWindow}), {",".join(self.groupKeys)}\n'
+        elif self.aggregate is not None and self.groupKeys == []:
+            queryStr += f'GROUP BY time({self.aggregate.timeWindow})\n'
+        elif self.aggregate is None and self.groupKeys != []:
+            queryStr += f'GROUP BY {",".join(self.groupKeys)}\n'
+        return queryStr
+    
+    def buildInfluxQlStr(self):
+        assert not (self.range is None and self.relativeRange is None), "Range or relative range is required"
+        #range = self.range if self.range is not None else self.getRangeFromRelative()
+        queryString = ""
+        queryString += f'SELECT {self.getAggregateMeasurements()}\n'
+        queryString += f'FROM {self.table}\n'
+        queryString += f'WHERE {self.parseFilters(self.filters)}\n'
+        queryString += f'AND {self.relativeRange.toInfluxQLString()}\n'
+        queryString += self.getGroupByInflux()
         return queryString
     
     def buildJson(self):
@@ -242,8 +312,12 @@ class InfluxQueryBuilder:
         queryJson = {
             "bucket": self.bucket,
             "range": range.toJson(),
+            "relativeRange": self.relativeRange.toJson(),
             "filters": [f.toJson() for f in self.filters],
-            "yield": self.yield_name
+            "yield": self.yield_name,
+            "measurements": self.measurements,
+            "table": self.table,
+            "groupKeys": self.groupKeys
         }
         if self.aggregate is not None:
             queryJson["aggregate"] = self.aggregate.toJson()
@@ -252,12 +326,24 @@ class InfluxQueryBuilder:
     @staticmethod
     def fromJson(json) -> 'InfluxQueryBuilder':
         builder = InfluxQueryBuilder()
-        builder.bucket = json["bucket"]
-        builder.range = Range.fromJson(json["range"])
-        builder.filters = [BaseQueryFilter.fromJson(f) for f in json["filters"]]
+        if "bucket" in json:
+            builder.bucket = json["bucket"]
+        if "range" in json:
+            builder.range = Range.fromJson(json["range"])
+        if "filters" in json:
+            builder.filters = [BaseQueryFilter.fromJson(f) for f in json["filters"]]
         if "aggregate" in json:
             builder.aggregate = QueryAggregation.fromJson(json["aggregate"])
-        builder.yield_name = json["yield"]
+        if "yield" in json:
+            builder.yield_name = json["yield"]
+        if "measurements" in json:
+            builder.measurements = json["measurements"]
+        if "table" in json:
+            builder.table = json["table"]
+        if "groupKeys" in json:
+            builder.groupKeys = json["groupKeys"]
+        if "relativeRange" in json:
+            builder.relativeRange = RelativeRange.fromJson(json["relativeRange"])
         return builder
 
 
@@ -271,10 +357,27 @@ if __name__ == "__main__":
              .withYield("median")
     )
 
-    queryStr = builder.build()
+    influxBuilder = (InfluxQueryBuilder()
+               .withBucket("Test")
+               .withMeasurements(["value"])
+               .withTable("cpu_usage")
+               .withFilter(QueryFilter("platform", "mac_os").OR(QueryFilter("platform", "windows")))
+               .withAggregate(QueryAggregation("10m", "median", False))
+               .withRelativeRange('30m', None)
+               .withGroupKeys(["host", "platform"])
+       )
+
+    queryStr = builder.buildFluxStr()
     queryJson = builder.buildJson()
+
+    influxQueryStr = influxBuilder.buildInfluxQlStr()
+    influxQueryJson = influxBuilder.buildJson()
+    influxBuilder2 = InfluxQueryBuilder.fromJson(influxQueryJson)
+    influxQueryStr2 = influxBuilder2.buildInfluxQlStr()
     
+    print(influxQueryStr)
+    print(influxQueryStr2)
     print(queryStr)
     print(json.dumps(queryJson))
-    print(InfluxQueryBuilder.fromJson(queryJson).build())
+    print(InfluxQueryBuilder.fromJson(queryJson).buildFluxStr())
     

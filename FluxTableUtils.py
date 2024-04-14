@@ -1,3 +1,4 @@
+from typing import List
 from influxdb_client import QueryApi, FluxResponse
 from influxdb_client.client.flux_table import FluxTable, TableList
 from datetime import datetime
@@ -7,7 +8,11 @@ def getFluxTableSlice(table: FluxTable, startIdx: int, endIdx: int) -> FluxTable
     """Get a slice of a FluxTable."""
     newTable = FluxTable()
     newTable.columns = table.columns
-    newTable.records = table.records[startIdx:endIdx]
+    if endIdx == -1:
+        newTable.records = table.records[startIdx:]
+    else:
+        newTable.records = table.records[startIdx:endIdx + 1]
+    print("Getting slice of table", len(newTable.records))
     return newTable
 
 def getTableListSliced(tableList: TableList, startIdx: int, endIdx: int) -> TableList:
@@ -35,6 +40,7 @@ def toTimestamp(dt: datetime) -> int:
 
 def combineTableLists(original: TableList, new: TableList, appendStart: bool) -> TableList:
     """Combine a list of TableLists into a single TableList."""
+    print(new)
     for i in range(len(original)):
         if not appendStart:
             original[i].records.extend(new[i].records)
@@ -53,7 +59,19 @@ def fromJson(json: dict) -> TableList:
         tableList.append(fluxTable)
     return tableList
 
+def getTableKeys(table: FluxTable) -> List[str]:
+    """Get the keys of a FluxTable."""
+    reservedLabels = {"_field", "_measurement"}
+    fields = [key.label for key in table.get_group_key() if (key.label[0] != '_' or key.label in reservedLabels)]
+    tablekeys = [f"{k}={table.records[0][k]}" for k in fields]
+    return tablekeys
+
+'''
 #Experimental feature - can turn off
+Records timestamps denote the end of the record. 
+Results returned from influxDB start at the start time.
+ This function attempts fo fill in entries at the start and end of the query range
+'''
 def fillMissingData(tableList: TableList, start: int, end: int, aggWindow: int) -> TableList:
     """Fill missing data in a TableList."""
     for table in tableList:
