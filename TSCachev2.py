@@ -146,15 +146,21 @@ class Series:
     def getKeys(self):
         return self.keys
     
-    
+
+def getInverseIndexFilters(json):
+    filters = json["filters"]
+    return [BaseQueryFilter.fromJson(filter) for filter in filters]
 
 #Denotes a single bucket in the cache. This is the primary entrypoint in the cache. Cross-bucket searches are not allowed
 class Bucket:
     def __init__(self, key):
-        self.key = key
+        self.key = key #Key will be the table being searched ('e.g cpu_usage')
         # Holds a list of Series data
         self.data = []
         self.inverseIndex = InverseIndex()
+    
+    def findMatchingMeasurements(self, measurements):
+        return {m : self.inverseIndex.searchWord(m) for m in measurements}
     
     def findMatchingSeries(self, filter):
         return self.inverseIndex.search(filter)
@@ -163,9 +169,6 @@ class Bucket:
         return [self.data[key] for key in dataKeys]
     
 
-        
-
-    
 
 class CacheKeyGenv2:
     @staticmethod

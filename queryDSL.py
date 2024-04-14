@@ -15,10 +15,10 @@ class BaseQueryFilter:
 
     @staticmethod
     def fromJson(json):
-        type = json["type"]
-        if type == 'raw':
+        if "type" not in json or json["type"] == "raw":
             return QueryFilter(json["key"], json["value"])
-        elif type == 'or':
+        type = json["type"]
+        if type == 'or':
             return OrQueryFilter.fromJson(json)
         elif type == 'and':
             return AndQueryFilter.fromJson(json)
@@ -102,7 +102,7 @@ class AndQueryFilter(BaseQueryFilter):
         return AndQueryFilter(filters)
     
 class QueryAggregation:
-    def __init__(self, timeWindow: str, aggFunc: str, createEmpty: bool):
+    def __init__(self, timeWindow: str, aggFunc: str, createEmpty: bool = False):
         self.timeWindow = timeWindow
         self.aggFunc = aggFunc
         self.createEmpty = createEmpty
@@ -119,7 +119,8 @@ class QueryAggregation:
     
     @staticmethod
     def fromJson(json):
-        return QueryAggregation(json["timeWindow"], json["aggFunc"], json["createEmpty"])
+
+        return QueryAggregation(json["timeWindow"], json["aggFunc"], json.get("createEmpty", False))
     
     def getTimeWindowSeconds(self):
         unit = self.timeWindow[-1]
@@ -309,10 +310,11 @@ class InfluxQueryBuilder:
         assert self.bucket != "", "Bucket is required"
         assert not (self.range is None and self.relativeRange is None), "Range or relative range is required"
         range = self.range if self.range is not None else self.getRangeFromRelative()
+        
         queryJson = {
             "bucket": self.bucket,
             "range": range.toJson(),
-            "relativeRange": self.relativeRange.toJson(),
+            "relativeRange": self.relativeRange.toJson() if self.relativeRange is not None else None,
             "filters": [f.toJson() for f in self.filters],
             "yield": self.yield_name,
             "measurements": self.measurements,
@@ -375,6 +377,7 @@ if __name__ == "__main__":
     influxBuilder2 = InfluxQueryBuilder.fromJson(influxQueryJson)
     influxQueryStr2 = influxBuilder2.buildInfluxQlStr()
     
+    print(influxQueryJson)
     print(influxQueryStr)
     print(influxQueryStr2)
     print(queryStr)

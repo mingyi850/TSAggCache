@@ -62,15 +62,16 @@ def queryRaw():
 """
 Takes in a request with a JSON body containing query parameters
 Example:
-{   "bucket": "Test", 
-    "range": {"start": 1712955813, "end": 1712956413}, 
-    "filters": [
-        {"key": "_measurement", "value": "cpu_usage", "type": "raw"}, 
-        {"filter": [{"key": "platform", "value": "mac_os", "type": "raw"}, 
-        {"key": "platform", "value": "windows", "type": "raw"}], "type": "or"}
-    ], 
-    "yield": "median",
-    "aggregate": {"timeWindow": "1m", "aggFunc": "median", "createEmpty": false}
+{
+    'bucket': 'Test',
+    'range': {'start': 1713106836, 'end': 1713108636},
+    'relativeRange': {'fr': '30m', 'to': None},
+    'filters': [{'filter': [{'key': 'platform', 'value': 'mac_os', 'type': 'raw'}, {'key': 'platform', 'value': 'windows', 'type': 'raw'}], 'type': 'or'}],
+    'yield': '',
+    'measurements': ['value'],
+    'table': 'cpu_usage',
+    'groupKeys': ['host', 'platform'],
+    'aggregate': {'timeWindow': '10m', 'aggFunc': 'median', 'createEmpty': False}
 }
 Returns a json containing Table data from influxDB
 """
