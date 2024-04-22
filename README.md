@@ -67,4 +67,52 @@ The cache layer should provide the following
 
 We might not use HPC, but we could probably use GCP to gain enough resources to run our experiments.
 
+partialed = "measurement"
+First find all series with matching measurements
+Search inverse index for AND of measurements
+if exists AND of measurments, continue
+    else: Find partial match (OR of measurements)
+    set partialled to measurement
+
+For each, check that aggregation is aggregatable
+Check time range contains searched time range, else set "partial"
+
+Scan full/partial matches for filters
+if filters are exactly the same, we can continue
+If filters are looser (subset of) current, we drop
+If filters are stricter than current, we set partialled to "filters" (if partialled already set we return False)
+
+Lookup group matching
+group matching. 
+If searched groupkeys exactly match, good
+if searched groupkeys are subset of cached groupkeys, good
+if searched groupkeys are superset of group keys, we drop.
+
+Group:
+if existing is grouped by (A, B, C) and we search for groupBy (A, B) -> we can reconstruct 
+if existing is grouped by (A, B) and we search for groupBy (A, B, C) -> Theres nothing we can do since we don't have information about C
+
+filter matching
+existing:
+A AND (B OR C OR D)
+new: (A AND B) OR (A AND C) OR (A AND D)
+
+search:
+A AND (C OR D OR E)
+search: (A AND C) OR (A AND D) or (A AND E)
+we can simply take the overlapping regions:
+    (A AND C), (A AND D) and query for (A AND E)
+
+Assume we don't have knowledge on the filter contents for each datapoint (it is not in grouping)
+
+Then we must reject the query.
+
+If existing is (A AND B)
+and our search is A AND (B OR C)
+then our search is for a superset of the existing data. We can use them.
+
+Last exercies:
+Existing is (A AND B) OR C -> DNF  already
+Existing is (A AND B AND (C OR D)) -> (A AND B AND C) OR ( A AND B AND D)
+
 
