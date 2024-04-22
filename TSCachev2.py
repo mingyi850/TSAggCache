@@ -102,7 +102,9 @@ class Bucket:
         
     def fetchData(self, dataKeys: Set[int]):
         return [self.data[key] for key in dataKeys]
-    
+
+#TODO: During validation, modify query as a new field 
+# Some partials don't require separate query. We can use 2 fields: query, and new_query to reflect this.
 class TsCacheV2:
     def __init__(self):
         self.cache = dict()
