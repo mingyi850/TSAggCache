@@ -116,3 +116,19 @@ Existing is (A AND B) OR C -> DNF  already
 Existing is (A AND B AND (C OR D)) -> (A AND B AND C) OR ( A AND B AND D)
 
 
+End of the day - we want to simplify the cache structure.
+We store entire series
+- Filters (non-negotiable) - match by key
+- Measurements (non-negotiable) - match by key (OR always fetch *)
+- Aggregation
+    - aggFn: non-negotiable
+    - aggWindow: window
+- Grouping (Set of fields to group on)
+
+If data does not exist in range, we will pull new data for the entire table.
+
+We index query based on key
+- Table
+- aggFn
+- Filters - convert to sets for similarity checks
+- grouping (check that search is subset)

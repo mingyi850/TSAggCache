@@ -13,6 +13,9 @@ class BaseQueryFilter:
     def toKey(self):
         pass
 
+    def asSetKey(self):
+        pass
+
     @staticmethod
     def fromJson(json):
         if "type" not in json or json["type"] == "raw":
@@ -48,6 +51,9 @@ class QueryFilter(BaseQueryFilter):
     def AND(self, other: 'QueryFilter'):
         return AndQueryFilter([self, other])
     
+    def asSetKey(self):
+        return f"({self.key}={self.value})"
+    
     
 class OrQueryFilter(BaseQueryFilter):
     def __init__(self, filters: List[BaseQueryFilter]):
@@ -75,6 +81,10 @@ class OrQueryFilter(BaseQueryFilter):
     def toKey(self):
         return "or(" + ",".join([f.toKey() for f in self.filters]) + ")"
     
+    def asSetKey(self):
+        setMembers = ",".join(sorted([f.asSetKey() for f in self.filters]))
+        return f"(or: {setMembers})"
+    
 class AndQueryFilter(BaseQueryFilter):
     def __init__(self, filters: List[BaseQueryFilter]):
         self.filters = filters
@@ -95,6 +105,10 @@ class AndQueryFilter(BaseQueryFilter):
     
     def toKey(self):
         return "and(" + ",".join([f.toKey() for f in self.filters]) + ")"
+    
+    def asSetKey(self):
+        setMembers = ",".join(sorted([f.asSetKey() for f in self.filters]))
+        return f"(and: {setMembers})"
     
     @staticmethod
     def fromJson(json):
