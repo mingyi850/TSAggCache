@@ -119,7 +119,7 @@ Existing is (A AND B AND (C OR D)) -> (A AND B AND C) OR ( A AND B AND D)
 End of the day - we want to simplify the cache structure.
 We store entire series
 - Filters (non-negotiable) - match by key
-- Measurements (non-negotiable) - match by key (OR always fetch *)
+- Measurements: always fetch * (we can filter later)
 - Aggregation
     - aggFn: non-negotiable
     - aggWindow: window

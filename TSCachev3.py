@@ -10,10 +10,9 @@ import pandas as pd
 '''
 
 class Series:
-    def __init__(self, tableKey, groupKeys, aggFn, aggInterval, seriesKey, rangeStart, rangeEnd, data):
+    def __init__(self, groups: Set[str], aggFn: str, aggInterval: int, seriesKey: str, rangeStart: int, rangeEnd: int, data):
         self.seriesKey = seriesKey
-        self.tableKey = tableKey
-        self.groupKeys = groupKeys
+        self.groupKeys = groups
         self.aggFn = aggFn
         self.aggInterval = aggInterval
         self.rangeStart = rangeStart
