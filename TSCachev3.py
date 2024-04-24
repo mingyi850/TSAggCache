@@ -2,12 +2,18 @@ from datetime import datetime
 from queryDSL import InfluxQueryBuilder
 from queryDSL import AndQueryFilter
 import pandas as pd
+from typing import Set, List, Dict
 
 ''' TO Fetch series
 - use table key
 - check grouping fits
 - check aggFn fits
 '''
+
+class SeriesGroup:
+    def __init__(self, groupKeys: Dict, data):
+        self.groupKeys = groupKeys
+        self.data = data
 
 class Series:
     def __init__(self, groups: Set[str], aggFn: str, aggInterval: int, seriesKey: str, rangeStart: int, rangeEnd: int, data):
@@ -16,8 +22,8 @@ class Series:
         self.aggFn = aggFn
         self.aggInterval = aggInterval
         self.rangeStart = rangeStart
-        self.rangeEnd = rangeEnd
-        self.data = data
+        self.rangeEnd = rangeEnd 
+        self.data = data # A List of SeriesGroups
 
     def __str__(self):
         return f"Table: {self.tableKey}, Group: {self.groupKeys}, AggFn: {self.aggFn}"
@@ -65,7 +71,7 @@ class TSCachev3:
     def __init__(self):
         self.cache = {}
         
-    def get(self, queryDSL: InfluxQueryBuilder):
+    def get(self, queryDSL: InfluxQueryBuilder) -> Series:
         seriesKey = getSeriesKey(queryDSL)
         if seriesKey in self.cache:
             return self.cache[seriesKey]

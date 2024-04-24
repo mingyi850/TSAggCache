@@ -180,6 +180,12 @@ class Range:
             "end": self.end
         }
     
+    def toInfluxQLString(self):
+        if self.end is not None:
+            return f"time > {format(toNano(self.start), '.0f')} AND time < {format(toNano(self.end), '.0f')}"
+        else:
+            return f"time > {format(toNano(self.start), '.0f')}"
+    
     @staticmethod
     def fromJson(json):
         return Range(json["start"], json["end"])
@@ -311,12 +317,12 @@ class InfluxQueryBuilder:
     
     def buildInfluxQlStr(self):
         assert not (self.range is None and self.relativeRange is None), "Range or relative range is required"
-        #range = self.range if self.range is not None else self.getRangeFromRelative()
+        range = self.range if self.range is not None else self.getRangeFromRelative()
         queryString = ""
         queryString += f'SELECT {self.getAggregateMeasurements()}\n'
         queryString += f'FROM {self.table}\n'
         queryString += f'WHERE {self.parseFilters(self.filters)}\n'
-        queryString += f'AND {self.relativeRange.toInfluxQLString()}\n'
+        queryString += f'AND {range.toInfluxQLString()}\n'
         queryString += self.getGroupByInflux()
         return queryString
     
@@ -362,6 +368,8 @@ class InfluxQueryBuilder:
             builder.relativeRange = RelativeRange.fromJson(json["relativeRange"])
         return builder
 
+def toNano(time):
+    return time * 1e9
 
 if __name__ == "__main__":
     builder = (InfluxQueryBuilder()
