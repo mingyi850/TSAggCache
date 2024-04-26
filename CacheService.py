@@ -2,7 +2,9 @@ import TSCachev3
 from queryDSL import InfluxQueryBuilder, Range
 import copy
 from influxdb_client_3 import InfluxDBClient3
+import pandas as pd
 
+INFLUXDB_TOKEN="VJK1PL0-qDkTIpSgrtZ0vq4AG02OjpmOSoOa-yC0oB1x3PvZCk78In9zOAGZ0FXBNVkwoJ_yQD6YSZLx23WElA==" #TODO: Remove or swap
 token = INFLUXDB_TOKEN
 org = "Realtime Big Data"
 host = "https://us-east-1-1.aws.cloud2.influxdata.com"
@@ -24,11 +26,9 @@ class CacheService:
             newQueryDSL = self.modifyQuery(newQueryDSL, cachedResults, newRange)
             query = newQueryDSL.buildInfluxQlString()
             results = self.client.query(query=query, database=queryDSL.bucket, language="influxql", mode='pandas')
-
-        # OK we now have good - need to slice
-        # - First slice by time range. IF we need extra time, we get extra time by making entire query again.
-        # Set the cache with the combined results 
-
+            newSeries = self.combineResults(self, newQueryDSL, cachedResults, results, rangeType)
+            self.cache.set(newQueryDSL, newSeries)
+        
         # Now we want to give user back what they want
         # - First we slice by time range they need
         # - Second we slice by columns they are looking for
@@ -38,17 +38,42 @@ class CacheService:
         #Return the modified value
         return cachedResults
 
+    def groupDataDict(self, data: pd.DataFrame, groupKeys: list) -> dict:
+        result = dict()
+        grouped = data.groupby(groupKeys)
+        for key, group in grouped:
+            seriesKeyDict = dict()
+            for i in range(len(groupKeys)):
+                seriesKeyDict[groupKeys[i]] = key[i]
+            seriesGroup = TSCachev3.SeriesGroup(seriesKeyDict, group)
+            result[key] = seriesGroup
+        return result
     # Manipulate existing series:
     # - if previous series was none, create new series
     # - if additional range was original range (no overlap or did not exist), append series
     # - if additional range was at the start, append series and update range start
     # - if additional range was at the end, append series and update range end 
-    def appendSeries(self, queryDSL: InfluxQueryBuilder, series: TSCachev3.Series):
-        if series is not None:
-            series.data = series.data.append(series.data)
-            series.rangeStart = min(series.rangeStart, series.rangeStart)
-            series.rangeEnd = max(series.rangeEnd, series.rangeEnd)
-            self.cache.set(queryDSL, series)
+    def combineResults(self, newQueryDSL: InfluxQueryBuilder, cachedSeries: TSCachev3.Series, newResults: pd.DataFrame, rangeType: str) -> TSCachev3.Series:
+        if rangeType == "full":
+            newSeriesData = self.groupDataDict(newResults, newQueryDSL.groupKeys)
+            newSeries = TSCachev3.Series(set(newQueryDSL.groupKeys), newQueryDSL.aggregate.aggFunc, newQueryDSL.aggregate.timeWindow, newQueryDSL.range.start, newQueryDSL.range.end, newSeriesData)
+            return newSeries
+        elif rangeType == "start":
+            newSeriesData = self.groupDataDict(newResults, newQueryDSL.groupKeys)
+            existing = cachedSeries.getData()
+            for key, value in existing:
+                newSeriesData[key] = pd.concat([newSeriesData[key], value])
+            newSeries = TSCachev3.Series(set(newQueryDSL.groupKeys), newQueryDSL.aggregate.aggFunc, newQueryDSL.aggregate.timeWindow, newQueryDSL.range.start, cachedSeries.rangeEnd, newSeriesData)
+            return newSeries
+        elif rangeType == "end":
+            newSeriesData = self.groupDataDict(newResults, newQueryDSL.groupKeys)
+            existing = cachedSeries.getData()
+            for key, value in existing:
+                newSeriesData[key] = pd.concat([value, newSeriesData[key]])
+            newSeries = TSCachev3.Series(set(newQueryDSL.groupKeys), newQueryDSL.aggregate.aggFunc, newQueryDSL.aggregate.timeWindow, cachedSeries.rangeStart, newQueryDSL.range.end, newSeriesData)
+            return newSeries
+        
+
     
     def modifyQuery(self, queryDSL: InfluxQueryBuilder, cachedResults: TSCachev3.Series, newRange: Range) -> InfluxQueryBuilder:
         queryDSL.range = newRange

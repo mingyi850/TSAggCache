@@ -16,8 +16,7 @@ class SeriesGroup:
         self.data = data
 
 class Series:
-    def __init__(self, groups: Set[str], aggFn: str, aggInterval: int, seriesKey: str, rangeStart: int, rangeEnd: int, data):
-        self.seriesKey = seriesKey
+    def __init__(self, groups: Set[str], aggFn: str, aggInterval: int, rangeStart: int, rangeEnd: int, data: Dict[tuple, SeriesGroup]):
         self.groupKeys = groups
         self.aggFn = aggFn
         self.aggInterval = aggInterval

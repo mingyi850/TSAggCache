@@ -61,6 +61,8 @@ for key, group in dfs:
     #print(group)
     #print("\n
 
+print(dfs)
+
 print(pd.concat([groupData[0], groupData[3]]))
 #print(dfs.groups)
 groupByLatency = time.time() - currentTime
