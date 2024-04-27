@@ -17,8 +17,8 @@ class CacheService:
         self.client = InfluxDBClient3(host=host, token=token, org=org)
 
     def query(self, json):
-        queryDSL = InfluxQueryBuilder.fromJson(json)
-        cachedResults = self.cache.get(queryDSL)
+        queryDSL = InfluxQueryBuilder.fromJson(json) #Convert to query builder object
+        cachedResults = self.cache.get(queryDSL) #Check if a matching entry exists in cache based on table_aggFn_filter
         cachedResults = self.checkGrouping(queryDSL, cachedResults)
         cachedResults = self.checkAggWindow(queryDSL, cachedResults)
         additionalRange = self.checkAdditionalRange(queryDSL, cachedResults)
@@ -110,6 +110,13 @@ class CacheService:
             queryDSL.aggregate.aggFunc = cachedResults.aggFn
         return queryDSL
     
+    '''
+                    cache 1500-1600 1600-1700 1700-1800 (1hr windows)
+    user requests:  req   1605 - 1805
+                          technically what we should return (1605 - 1705) (1705 - 1805)
+                          but we want to use cache so we return (1600 - 1700) (1700 - 1800)
+
+    '''
     def checkAdditionalRange(self, queryDSL: InfluxQueryBuilder, cachedResults: TSCachev3.Series) -> Tuple[Range, str]:
         if cachedResults is not None:
             queryStart = queryDSL.range.start

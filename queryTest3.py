@@ -30,11 +30,13 @@ WHERE time > now() - 24h
 GROUP BY time(1m), platform, host
 """
 
-query2 = f"""SELECT mean(*)
+query2 = f"""
+SELECT mean(value)
 FROM cpu_usage
 WHERE platform = 'mac_os' OR platform = 'windows'
 AND time < {format(currenttime_ns, '.0f')} AND time > {format(previoustime_ns, '.0f')}
-GROUP BY time(5s), host,platform
+GROUP BY time(5s),
+host,platform
 """
 
 influxBuilder = (InfluxQueryBuilder()
@@ -51,22 +53,21 @@ queryStr = influxBuilder.buildInfluxQlStr()
 queryJson = influxBuilder.buildJson()
 
 print("Running query %s" % queryStr)
-# Execute the query
+# Execute the query via client
 startTime = time.time()
 table2 = client.query(query=queryStr, database="Test", language="influxql", mode='pandas')
 print(table2)
-
-
 rawLatency = time.time() - startTime
 
+# Execute the query via cache service
 startTime = time.time()
 cacheUrlJson = "http://127.0.0.1:5000/api/query"
 cachedTableResp = requests.post(cacheUrlJson, json=queryJson)
-#Execute query in cache
 cacheLatency = time.time() - startTime
 
 cachedTableJson = cachedTableResp.json()
 cachedTableDf = pd.read_json(json.dumps(cachedTableJson), orient='records')
+
 
 print(cachedTableDf)
 
