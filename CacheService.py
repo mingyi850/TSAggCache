@@ -38,16 +38,13 @@ class CacheService:
         # - First we slice by time range they need
         newCachedResults = self.cache.get(queryDSL)
         print("New cached results is ", newCachedResults)
-        slicedSeries = newCachedResults.getSlicedSeries(queryDSL.range.start, queryDSL.range.end)
-        regroupedSeries = slicedSeries.regroup(queryDSL.groupKeys, queryDSL.measurements)
-        reAggregatedSeries = regroupedSeries.reAggregate(queryDSL.aggregate.getTimeWindowSeconds(), queryDSL.measurements)
-        # - Second we slice by columns they are looking for
-        columnedSeries = reAggregatedSeries.filterMeasurements(queryDSL.measurements)
-        # - Third we regroup columns based on new groupings
-        # - Lastly we re-aggregate results
-        #Return the modified value
-        combinedResults = columnedSeries.getCombinedDataFrame()
-        return combinedResults
+        result = (newCachedResults
+                  .getSlicedSeries(queryDSL.range.start, queryDSL.range.end) #Slice by time range
+                  .regroup(queryDSL.groupKeys, queryDSL.measurements) # regroup based on new groupings
+                  .reAggregate(queryDSL.aggregate.getTimeWindowSeconds(), queryDSL.measurements) # downsample based on new aggInterval 
+                  .filterMeasurements(queryDSL.measurements) # return only required columns
+                  .getCombinedDataFrame()) #combine dataframe into one
+        return result
     
     def groupDataDict(self, data: pd.DataFrame, groupKeys: list) -> dict:
         result = dict()
