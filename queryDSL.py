@@ -290,7 +290,7 @@ class InfluxQueryBuilder:
     
     def getAggregateMeasurements(self):
         if self.aggregate is not None:
-            return ", ".join([f"{self.aggregate.aggFunc}({m}) as {m}" for m in self.measurements])
+            return ", ".join([f"{self.aggregate.aggFunc}({m})" for m in self.measurements])
         else:
             return ", ".join(self.measurements)
     

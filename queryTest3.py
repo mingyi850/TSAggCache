@@ -3,6 +3,9 @@ INFLUXDB_TOKEN="VJK1PL0-qDkTIpSgrtZ0vq4AG02OjpmOSoOa-yC0oB1x3PvZCk78In9zOAGZ0FXB
 import os, time
 from influxdb_client_3 import InfluxDBClient3, Point
 import pandas as pd
+from queryDSL import InfluxQueryBuilder, QueryAggregation, QueryFilter
+import requests
+import json
 
 
 token = INFLUXDB_TOKEN
@@ -20,32 +23,60 @@ previoustime_ns = previoustime * 1e9
 print(currenttime_ns)
 print(previoustime_ns)
 #print(current)
+
 query = """SELECT mean(value)
 FROM "cpu_usage"
 WHERE time > now() - 24h
 GROUP BY time(1m), platform, host
 """
 
-query2 = f"""SELECT median(value) as value,median(value) as value
+query2 = f"""SELECT mean(*)
 FROM cpu_usage
 WHERE platform = 'mac_os' OR platform = 'windows'
 AND time < {format(currenttime_ns, '.0f')} AND time > {format(previoustime_ns, '.0f')}
 GROUP BY time(5s), host,platform
 """
 
+influxBuilder = (InfluxQueryBuilder()
+               .withBucket("Test")
+               .withMeasurements(["value"])
+               .withTable("cpu_usage")
+               .withFilter(QueryFilter("platform", "mac_os").OR(QueryFilter("platform", "windows")))
+               .withAggregate(QueryAggregation("10m", "median", False))
+               .withRelativeRange('30m', None)
+               .withGroupKeys(["host", "platform"])
+       )
+
+queryStr = influxBuilder.buildInfluxQlStr()
+queryJson = influxBuilder.buildJson()
+
+print("Running query %s" % queryStr)
 # Execute the query
 startTime = time.time()
-table2 = client.query(query=query2, database="Test", language="influxql", mode='all')
+table2 = client.query(query=queryStr, database="Test", language="influxql", mode='pandas')
 print(table2)
-table = client.query(query=query, database="Test", language="influxql", mode='pandas')
 
-latency = time.time() - startTime
 
-#print(table)
-#print(table)
+rawLatency = time.time() - startTime
+
+startTime = time.time()
+cacheUrlJson = "http://127.0.0.1:5000/api/query"
+cachedTableResp = requests.post(cacheUrlJson, json=queryJson)
+#Execute query in cache
+cacheLatency = time.time() - startTime
+
+cachedTableJson = cachedTableResp.json()
+cachedTableDf = pd.read_json(json.dumps(cachedTableJson), orient='records')
+
+print(cachedTableDf)
+
+print("Raw query took %.2f seconds" % rawLatency)
+print("Cache query took %.2f seconds" % cacheLatency)
+exit()
 # Convert to dataframe
 df = table2.to_pandas()#.sort_values(by=["host", "time"])
 print(df)
+
 
 
 currentTime = time.time()

@@ -6,6 +6,7 @@ from influxdb_client import InfluxDBClient, Point, WritePrecision
 from MiniTSCache import MiniTSCache
 from FluxTableUtils import combineTableLists, fillMissingData
 from MiniTSCache import CacheKeyGen
+from CacheService import CacheService
 
 token = "NVRAh0Hy9gLvSJVlIaYVRIP5MTktlqBHCOGxpgzIOHdSD-fu2vGjug5NmMcTv2QvH7BK6XG0tQvaoPXUWmuvLQ=="
 org = "Realtime"
@@ -39,6 +40,7 @@ app.request_class.charset = None
 
 queryCache = dict()
 tsCache = MiniTSCache()
+cacheService = CacheService()
 
 @app.route('/api/health', methods=['GET'])
 def health():
@@ -79,38 +81,14 @@ Returns a json containing Table data from influxDB
 def query():
     #print(request.data.decode('utf-8'))
     requestJson = json.loads(request.data)
-    queryBuilder = InfluxQueryBuilder.fromJson(requestJson)
-    queryString = queryBuilder.buildFluxStr()
-    cacheResult = tsCache.get(requestJson)
-    if not cacheResult:
-        print("Not cached, fetching from InfluxDB")
-        response = query_api.query(queryString, org="Realtime")
-        #newData = fillMissingData(response, queryBuilder.range.start, queryBuilder.range.end, queryBuilder.aggregate.getTimeWindowSeconds())
-        tsCache.insert(requestJson, response)
-        return response.to_json()
-    else:
-        queryStart = cacheResult.queryStart
-        queryEnd = cacheResult.queryEnd
-        print(f"Cached, fetching reduced time slice from InfluxDB \nNew: Start: {queryStart} \nEnd: {queryEnd}\nOriginal: Start: {queryBuilder.range.start} \nEnd: {queryBuilder.range.end}")
-        if queryStart == -1 and queryEnd == -1:
-            print("Complete cache match, returning directly from cache")
-            print("Returning table list of length", len(cacheResult.data[0].records))
-            return cacheResult.data.to_json()
-        else:
-            print("Partial hit, fetching from InfluxDB")
-            queryBuilder.range.start = queryStart
-            queryBuilder.range.end = queryEnd
-            queryString = queryBuilder.buildFluxStr()
-            response = query_api.query(queryString, org="Realtime")
-            newData = combineTableLists(cacheResult.data, response, cacheResult.appendStart)
-            #newData = fillMissingData(response, queryBuilder.range.start, queryBuilder.range.end, queryBuilder.aggregate.getTimeWindowSeconds())
-            tsCache.insert(requestJson, newData)
-            print("Returning table list of length", len(newData))
-            return newData.to_json()
+    result = cacheService.query(requestJson)
+    print("Got result", result)
+    result.reset_index(drop=True, inplace=True)
+    return result.to_json()
 
 @app.route('/api/reset', methods=['POST'])   
 def resetCache():
-    tsCache.reset()
+    cacheService.reset()
     return jsonify({"status": "ok"})
     
     
