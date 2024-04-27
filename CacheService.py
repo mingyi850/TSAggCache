@@ -40,8 +40,9 @@ class CacheService:
         print("New cached results is ", newCachedResults)
         slicedSeries = newCachedResults.getSlicedSeries(queryDSL.range.start, queryDSL.range.end)
         regroupedSeries = slicedSeries.regroup(queryDSL.groupKeys, queryDSL.measurements)
+        reAggregatedSeries = regroupedSeries.reAggregate(queryDSL.aggregate.getTimeWindowSeconds(), queryDSL.measurements)
         # - Second we slice by columns they are looking for
-        columnedSeries = regroupedSeries.filterMeasurements(queryDSL.measurements)
+        columnedSeries = reAggregatedSeries.filterMeasurements(queryDSL.measurements)
         # - Third we regroup columns based on new groupings
         # - Lastly we re-aggregate results
         #Return the modified value

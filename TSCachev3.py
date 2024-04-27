@@ -13,11 +13,13 @@ from typing import Set, List, Dict
 '''
 
 essentialColumns = set(["time", "iox::measurement"])
+
 class SeriesGroup:
     def __init__(self, groupKeys: Dict, data: pd.DataFrame):
         self.groupKeys = groupKeys
         self.data = data
-        self.variableColumns = set([col for col in data.columns if col not in essentialColumns.union(set(groupKeys.keys()))])
+        self.essentialColumns = essentialColumns.union(set(groupKeys.keys()))
+        self.variableColumns = set([col for col in data.columns if col not in self.essentialColumns])
 
     def getSlice(self, start: int, end: int) -> SeriesGroup:
         return SeriesGroup(self.groupKeys, self.data[start:end])
@@ -57,7 +59,22 @@ class SeriesGroup:
                 newDf[measurement] = combinedMeasurements[measurement]
             print("New df", newDf)
             return SeriesGroup(groupings, newDf)
+    
+    def reAggregate(self, newAggWindow: int, measurements: List[str], aggFn: str):
+        measurements = [f"{aggFn}_{measurement}" for measurement in measurements]
+        measurementsColumns = [self.data[[measurement]] for measurement in measurements]
+        print("Original df", self.data)
+        timeDf = self.data.set_index('time', inplace=False)
+        aggDict = {**{measurement: aggFn for measurement in measurements}, **{colName: 'first' for colName in self.essentialColumns if colName != 'time'}}
+        downsampled = timeDf.resample(f'{newAggWindow}S').agg(aggDict)
+        print("Downsampled", downsampled)
+        columns = [*["time", "iox::measurement"], *self.groupKeys.keys(), *measurements]
+        print(columns)
+        downsampled = downsampled.reset_index()[columns]
+        print("Downsampled reordered", downsampled)
+        return SeriesGroup(self.groupKeys, downsampled) 
 
+        
 class Series:
     def __init__(self, table: str, groups: Set[str], aggFn: str, aggInterval: int, rangeStart: int, rangeEnd: int, data: Dict[tuple, SeriesGroup]):
         self.table = table
@@ -131,6 +148,16 @@ class Series:
             groupKey = dict(zip(sortedGroups, group))
             newGroupings[group] = SeriesGroup.mergeSeriesGroups(newGroupings[group], self.aggFn, measurements, groupKey)
         return Series(self.table, newGroups, self.aggFn, self.aggInterval, self.rangeStart, self.rangeEnd, newGroupings)
+    
+    def reAggregate(self, newAggWindow: int, measurements: List[str]) -> Series:
+        if newAggWindow == self.aggInterval:
+            return Series(self.table, self.groupKeys, self.aggFn, self.aggInterval, self.rangeStart, self.rangeEnd, self.data)
+        newData = dict()
+        for key in self.data:
+            seriesGroup = self.data[key]
+            newData[key] = seriesGroup.reAggregate(newAggWindow, measurements, self.aggFn)
+        return Series(self.table, self.groupKeys, self.aggFn, newAggWindow, self.rangeStart, self.rangeEnd, newData)
+
         
     
 def getTableKey(queryDSL: InfluxQueryBuilder) -> str:
