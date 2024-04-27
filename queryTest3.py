@@ -49,6 +49,16 @@ influxBuilder = (InfluxQueryBuilder()
                .withGroupKeys(["host", "platform"])
        )
 
+influxBuilderReGrouped = (InfluxQueryBuilder()
+               .withBucket("Test")
+               .withMeasurements(["value"])
+               .withTable("cpu_usage")
+               .withFilter(QueryFilter("platform", "mac_os").OR(QueryFilter("platform", "windows")))
+               .withAggregate(QueryAggregation("10m", "median", False))
+               .withRelativeRange('30m', None)
+               .withGroupKeys(["platform"])
+       )
+
 queryStr = influxBuilder.buildInfluxQlStr()
 queryJson = influxBuilder.buildJson()
 
@@ -73,6 +83,16 @@ print(cachedTableDf)
 
 print("Raw query took %.2f seconds" % rawLatency)
 print("Cache query took %.2f seconds" % cacheLatency)
+
+print("Trying regrouping")
+regroupRequestJson = influxBuilderReGrouped.buildJson()
+startTime = time.time()
+regroupResp = requests.post(cacheUrlJson, json=regroupRequestJson).json()
+regroupLatency = time.time() - startTime
+
+regroupedTableDf = pd.read_json(json.dumps(regroupResp), orient='records')
+print(regroupedTableDf)
+print("Regroup query took %.2f seconds" % regroupLatency)
 exit()
 # Convert to dataframe
 df = table2.to_pandas()#.sort_values(by=["host", "time"])

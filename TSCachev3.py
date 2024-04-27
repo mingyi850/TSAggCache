@@ -1,4 +1,6 @@
+from __future__ import annotations
 from datetime import datetime
+from math import ceil
 from queryDSL import InfluxQueryBuilder
 from queryDSL import AndQueryFilter
 import pandas as pd
@@ -10,10 +12,51 @@ from typing import Set, List, Dict
 - check aggFn fits
 '''
 
+essentialColumns = set(["time", "iox::measurement"])
 class SeriesGroup:
     def __init__(self, groupKeys: Dict, data: pd.DataFrame):
         self.groupKeys = groupKeys
         self.data = data
+        self.variableColumns = set([col for col in data.columns if col not in essentialColumns.union(set(groupKeys.keys()))])
+
+    def getSlice(self, start: int, end: int) -> SeriesGroup:
+        return SeriesGroup(self.groupKeys, self.data[start:end])
+
+    def dropColumns(self, columns: List[str]):
+        return SeriesGroup(self.groupKeys, self.data.drop(columns, axis=1, inplace=False))
+    
+    def retainColumns(self, columns: List[str]):
+        unwantedColumns = list(self.variableColumns.difference(set(columns)))
+        return self.dropColumns(unwantedColumns)
+    
+    @staticmethod
+    def mergeSeriesGroups(seriesGroups: List[SeriesGroup], aggFn: str, measurements: List[str], groupings: Dict[str, str]) -> SeriesGroup:
+        fnDict = {
+            "mean": pd.DataFrame.mean,
+            "sum": pd.DataFrame.sum,
+            "max": pd.DataFrame.max,
+            "min": pd.DataFrame.min,
+            "median": pd.DataFrame.median,
+            "count": pd.DataFrame.count,
+            "first": pd.DataFrame.first,
+            "last": pd.DataFrame.last
+        }
+        if len(seriesGroups) == 1:
+            return SeriesGroup(groupings, seriesGroups[0].data)
+        else:
+            dfs = [seriesGroup.data for seriesGroup in seriesGroups]
+            for df in dfs:
+                df.reset_index(drop=True, inplace=True)
+            measurements = [f"{aggFn}_{measurement}" for measurement in measurements]
+            concatedMeasurements = {measurement: pd.concat([df[measurement] for df in dfs], axis=1) for measurement in measurements}
+            print("Concatenated", concatedMeasurements)
+            combinedMeasurements = {measurement: fnDict[aggFn](concatedMeasurements[measurement], axis=1) for measurement in measurements}
+            print("Combined", combinedMeasurements)
+            newDf = dfs[0].copy()
+            for measurement in measurements:
+                newDf[measurement] = combinedMeasurements[measurement]
+            print("New df", newDf)
+            return SeriesGroup(groupings, newDf)
 
 class Series:
     def __init__(self, table: str, groups: Set[str], aggFn: str, aggInterval: int, rangeStart: int, rangeEnd: int, data: Dict[tuple, SeriesGroup]):
@@ -52,13 +95,42 @@ class Series:
     def getAggFn(self):
         return self.aggFn
     
-    def getDataSlices(self, rangeStart: int, rangeEnd: int) -> Dict[str, SeriesGroup]:
-        print(f"Range start: {rangeStart}, Range end: {rangeEnd}, Series start: {self.rangeStart}, Series end: {self.rangeEnd}, aggInterval: {self.aggInterval}")
+    def getSlicedSeries(self, rangeStart: int, rangeEnd: int) -> Series:
         startIndex = int((rangeStart - self.rangeStart) / self.aggInterval)
-        endIndex = int((rangeEnd - self.rangeStart) / self.aggInterval)
-        print("KEYS: ", list(self.data.keys()))
-        print("Data: ", self.data)
-        return {k: self.data[k][startIndex:endIndex] for k in list(self.data.keys())}
+        endIndex = ceil((rangeEnd - self.rangeStart) / self.aggInterval) + 1
+        result = dict()
+        for key in self.data.keys():
+            seriesGroup = self.data[key]
+            result[key] = seriesGroup.getSlice(startIndex, endIndex)
+        return Series(self.table, self.groupKeys, self.aggFn, self.aggInterval, rangeStart, rangeEnd, result)
+    
+    def getCombinedDataFrame(self) -> pd.DataFrame:
+        result = pd.concat([seriesGroup.data for seriesGroup in self.data.values()])
+        return result
+    
+    def filterMeasurements(self, measurements: List[str]):
+        augmentedMeasurements = [f"{self.aggFn}_{measurement}" for measurement in measurements]
+        result = dict()
+        for key in self.data.keys():
+            seriesGroup = self.data[key]
+            result[key] = seriesGroup.retainColumns(augmentedMeasurements)
+        return Series(self.table, self.groupKeys, self.aggFn, self.aggInterval, self.rangeStart, self.rangeEnd, result)
+    
+    def regroup(self, newGroups: List[str], measurements: List[str]) -> Series:
+        if set(newGroups) == self.groupKeys:
+            return Series(self.table, self.groupKeys, self.aggFn, self.aggInterval, self.rangeStart, self.rangeEnd, self.data)
+        newGroupings = dict()
+        sortedGroups = sorted(newGroups)
+        for seriesGroup in self.data.values():
+            newGroupKey = tuple([seriesGroup.groupKeys[key] for key in sortedGroups])
+            if newGroupKey in newGroupings:
+                newGroupings[newGroupKey].append(seriesGroup)
+            else:
+                newGroupings[newGroupKey] = [seriesGroup]
+        for group in newGroupings:
+            groupKey = dict(zip(sortedGroups, group))
+            newGroupings[group] = SeriesGroup.mergeSeriesGroups(newGroupings[group], self.aggFn, measurements, groupKey)
+        return Series(self.table, newGroups, self.aggFn, self.aggInterval, self.rangeStart, self.rangeEnd, newGroupings)
         
     
 def getTableKey(queryDSL: InfluxQueryBuilder) -> str:
