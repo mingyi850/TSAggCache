@@ -145,7 +145,7 @@ class CacheService:
             if cachedResults.aggFn != "median":
                 return cachedResults
             else:
-                if queryDSL.aggregate.getTimeWindowSeconds() == cachedResults.aggInterval:
+                if queryDSL.aggregate.getTimeWindowSeconds() == cachedResults.aggInterval and set(queryDSL.groupKeys) == cachedResults.groupKeys:
                     return cachedResults
                 else:
                     return None
