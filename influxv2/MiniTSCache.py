@@ -1,5 +1,5 @@
 from queryDSL import InfluxQueryBuilder, QueryAggregation, BaseQueryFilter, Range
-from FluxTableUtils import getTableListSliced, toTimestamp, getStartTime, getEndTime, getSecondEndTime
+from influxv2.FluxTableUtils import getTableListSliced, toTimestamp, getStartTime, getEndTime, getSecondEndTime
 from InverseIndex import InverseIndex
 '''
 [5, 10, 15, 20, 25] 

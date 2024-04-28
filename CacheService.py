@@ -59,6 +59,7 @@ class CacheService:
             seriesGroup = SeriesGroup(seriesKeyDict, group)
             result[key] = seriesGroup
         return result
+    
     # Manipulate existing series:
     # - if previous series was none, create new series
     # - if additional range was original range (no overlap or did not exist), append series
