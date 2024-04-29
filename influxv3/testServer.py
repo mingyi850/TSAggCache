@@ -49,6 +49,7 @@ Returns a json containing Table data from influxDB
 @app.route('/api/query', methods=['POST'])
 def query():
     #print(request.data.decode('utf-8'))
+    print(request.data)
     requestJson = json.loads(request.data)
     result = cacheService.query(requestJson)
     print("Got result", result)
