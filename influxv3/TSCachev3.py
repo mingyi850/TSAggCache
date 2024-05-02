@@ -51,27 +51,27 @@ class SeriesGroup:
                 df.reset_index(drop=True, inplace=True)
             measurements = [f"{aggFn}_{measurement}" for measurement in measurements]
             concatedMeasurements = {measurement: pd.concat([df[measurement] for df in dfs], axis=1) for measurement in measurements}
-            print("Concatenated", concatedMeasurements)
+            #print("Concatenated", concatedMeasurements)
             combinedMeasurements = {measurement: fnDict[aggFn](concatedMeasurements[measurement], axis=1) for measurement in measurements}
-            print("Combined", combinedMeasurements)
+            #print("Combined", combinedMeasurements)
             newDf = dfs[0].copy()
             for measurement in measurements:
                 newDf[measurement] = combinedMeasurements[measurement]
-            print("New df", newDf)
+            #print("New df", newDf)
             return SeriesGroup(groupings, newDf)
     
     def reAggregate(self, newAggWindow: int, measurements: List[str], aggFn: str):
         measurements = [f"{aggFn}_{measurement}" for measurement in measurements]
         measurementsColumns = [self.data[[measurement]] for measurement in measurements]
-        print("Original df", self.data)
+        #print("Original df", self.data)
         timeDf = self.data.set_index('time', inplace=False)
         aggDict = {**{measurement: aggFn for measurement in measurements}, **{colName: 'first' for colName in self.essentialColumns if colName != 'time'}}
         downsampled = timeDf.resample(f'{newAggWindow}S').agg(aggDict)
-        print("Downsampled", downsampled)
+        #print("Downsampled", downsampled)
         columns = [*["time", "iox::measurement"], *self.groupKeys.keys(), *measurements]
         print(columns)
         downsampled = downsampled.reset_index()[columns]
-        print("Downsampled reordered", downsampled)
+        #print("Downsampled reordered", downsampled)
         return SeriesGroup(self.groupKeys, downsampled) 
 
         
@@ -122,6 +122,8 @@ class Series:
         return Series(self.table, self.groupKeys, self.aggFn, self.aggInterval, rangeStart, rangeEnd, result)
     
     def getCombinedDataFrame(self) -> pd.DataFrame:
+        if len(self.data.values()) == 0:
+            return pd.DataFrame()
         result = pd.concat([seriesGroup.data for seriesGroup in self.data.values()])
         return result
     

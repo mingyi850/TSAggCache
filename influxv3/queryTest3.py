@@ -41,68 +41,110 @@ host,platform
 
 influxBuilder = (InfluxQueryBuilder()
                .withBucket("Test")
-               .withMeasurements(["value"])
-               .withTable("cpu_usage")
+               .withMeasurements(["cpu_usage", "temperature"])
+               .withTable("system_metrics")
                .withFilter(QueryFilter("platform", "mac_os").OR(QueryFilter("platform", "windows")))
                .withAggregate(QueryAggregation("10m", "mean", False))
                .withRelativeRange('30m', None)
                .withGroupKeys(["host", "platform"])
        )
 
-influxBuilderReGrouped = (InfluxQueryBuilder()
+influxBuilderDiffMeasurements = (InfluxQueryBuilder()
                .withBucket("Test")
-               .withMeasurements(["value"])
-               .withTable("cpu_usage")
+               .withMeasurements(["cpu_usage", "memory_usage"])
+               .withTable("system_metrics")
+               .withFilter(QueryFilter("platform", "mac_os").OR(QueryFilter("platform", "windows")))
+               .withAggregate(QueryAggregation("10m", "mean", False))
+               .withRelativeRange('30m', None)
+               .withGroupKeys(["host", "platform"])
+       )
+
+influxBuilderDiffExtendedRange = (InfluxQueryBuilder()
+               .withBucket("Test")
+               .withMeasurements(["cpu_usage", "temperature"])
+               .withTable("system_metrics")
+               .withFilter(QueryFilter("platform", "mac_os").OR(QueryFilter("platform", "windows")))
+               .withAggregate(QueryAggregation("10m", "mean", False))
+               .withRelativeRange('60m', None)
+               .withGroupKeys(["host", "platform"])
+       )
+
+influxBuilderReAggregated = (InfluxQueryBuilder()
+               .withBucket("Test")
+               .withMeasurements(["cpu_usage", "memory_usage"])
+               .withTable("system_metrics")
                .withFilter(QueryFilter("platform", "mac_os").OR(QueryFilter("platform", "windows")))
                .withAggregate(QueryAggregation("20m", "mean", False))
-               .withRelativeRange('30m', None)
+               .withRelativeRange('60m', None)
                .withGroupKeys(["platform"])
        )
 
-influxBuilderReGrouped = (InfluxQueryBuilder()
+influxBuilderReAggregatedDouble = (InfluxQueryBuilder()
                .withBucket("Test")
-               .withMeasurements(["value2", "value3"])
-               .withTable("cpu_usage")
+               .withMeasurements(["cpu_usage"])
+               .withTable("system_metrics")
                .withFilter(QueryFilter("platform", "mac_os").OR(QueryFilter("platform", "windows")))
-               .withAggregate(QueryAggregation("20m", "mean", False))
-               .withRelativeRange('30m', None)
+               .withAggregate(QueryAggregation("30m", "mean", False))
+               .withRelativeRange('60m', None)
                .withGroupKeys(["platform"])
        )
 
-queryStr = influxBuilder.buildInfluxQlStr()
-queryJson = influxBuilder.buildJson()
+influxBuilderReAggregatedAll = (InfluxQueryBuilder()
+               .withBucket("Test")
+               .withMeasurements(["cpu_usage", "memory_usage", "temperature"])
+               .withTable("system_metrics")
+               .withFilter(QueryFilter("platform", "mac_os").OR(QueryFilter("platform", "windows")))
+               .withAggregate(QueryAggregation("30m", "mean", False))
+               .withRelativeRange('60m', None)
+               .withGroupKeys(["platform"])
+       )
 
-print("Running query %s" % queryStr)
-# Execute the query via client
-startTime = time.time()
-table2 = client.query(query=queryStr, database="Test", language="influxql", mode='pandas')
-print(table2)
-rawLatency = time.time() - startTime
+queries = [influxBuilder, influxBuilderDiffMeasurements, influxBuilderDiffExtendedRange, influxBuilderReAggregated, influxBuilderReAggregatedDouble, influxBuilderReAggregatedAll]
+
+def runSuiteRaw(queryList, client):
+    # Execute the query via client
+    startTime = time.time()
+    raw_times = []
+    for query in queryList:
+        queryTime = time.time()
+        queryStr = query.buildInfluxQlStr()
+        table = client.query(query=queryStr, database="Test", language="influxql", mode='pandas')
+        endTime = time.time() - queryTime
+        raw_times.append(endTime)
+        print(table)
+    rawLatency = time.time() - startTime
+    return rawLatency, raw_times
+
+def runSuiteCache(queryList):
+    # Execute the query via cache service
+    cacheUrlJson = "http://127.0.0.1:5000/api/query"
+    startTime = time.time()
+    cached_times = []
+    for query in queries:
+        queryJson = query.buildJson()
+        queryTime = time.time()
+        tableResp = requests.post(cacheUrlJson, json=queryJson)
+        tableJson = tableResp.json()
+        tableDf = pd.read_json(json.dumps(tableJson), orient='records')
+        endTime = time.time() - queryTime
+        cached_times.append(endTime)
+        print(tableDf)
+    cacheLatency = time.time() - startTime
+    return cacheLatency, cached_times
+
+cacheLatency, cached_times = runSuiteCache(queries)
+rawLatency, raw_times = runSuiteRaw(queries, client)
 
 # Execute the query via cache service
-startTime = time.time()
-cacheUrlJson = "http://127.0.0.1:5000/api/query"
-cachedTableResp = requests.post(cacheUrlJson, json=queryJson)
-cacheLatency = time.time() - startTime
-
-cachedTableJson = cachedTableResp.json()
-cachedTableDf = pd.read_json(json.dumps(cachedTableJson), orient='records')
 
 
-print(cachedTableDf)
 
-print("Raw query took %.2f seconds" % rawLatency)
-print("Cache query took %.2f seconds" % cacheLatency)
+print("Raw query took %.2f seconds"% rawLatency, raw_times)
+print("Cache query took %.2f seconds" % cacheLatency, cached_times)
 
-print("Trying regrouping")
-regroupRequestJson = influxBuilderReGrouped.buildJson()
-startTime = time.time()
-regroupResp = requests.post(cacheUrlJson, json=regroupRequestJson).json()
-regroupLatency = time.time() - startTime
-
-regroupedTableDf = pd.read_json(json.dumps(regroupResp), orient='records')
-print(regroupedTableDf)
-print("Regroup query took %.2f seconds" % regroupLatency)
+#reset cache
+resetUrl = "http://127.0.0.1:5000/api/reset"
+requests.post(resetUrl)
 exit()
 # Convert to dataframe
 df = table2.to_pandas()#.sort_values(by=["host", "time"])

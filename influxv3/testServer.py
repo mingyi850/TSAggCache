@@ -52,8 +52,8 @@ def query():
     print(request.data)
     requestJson = json.loads(request.data)
     result = cacheService.query(requestJson)
-    print("Got result", result)
     result.reset_index(drop=True, inplace=True)
+    print("Got result", result)
     return result.to_json()
 
 @app.route('/api/reset', methods=['POST'])   

@@ -28,7 +28,7 @@ class CacheService:
             newQueryDSL = InfluxQueryBuilder.fromJson(json)
             newQueryDSL = self.modifyQuery(newQueryDSL, cachedResults, newRange)
             query = newQueryDSL.buildInfluxQlStr()
-            print("Using query", query)
+            #print("Using query", query)
             results = self.client.query(query=query, database=queryDSL.bucket, language="influxql", mode='pandas')
             newSeries = self.combineResults(newQueryDSL, cachedResults, results, rangeType)
             self.cache.set(newQueryDSL, newSeries)
@@ -37,7 +37,7 @@ class CacheService:
         # Now we want to give user back what they want
         # - First we slice by time range they need
         newCachedResults = self.cache.get(queryDSL)
-        print("New cached results is ", newCachedResults)
+        #print("New cached results is ", newCachedResults)
         result = (newCachedResults
                   .getSlicedSeries(queryDSL.range.start, queryDSL.range.end) #Slice by time range
                   .regroup(queryDSL.groupKeys, queryDSL.measurements) # regroup based on new groupings
@@ -50,8 +50,8 @@ class CacheService:
         result = dict()
         if data.empty:
             return result
-        print("Group keys are", groupKeys)
-        print("New data is", data)
+        #print("Group keys are", groupKeys)
+        #print("New data is", data)
         sortedGroupKeys = sorted(groupKeys)
         grouped = data.groupby(sortedGroupKeys)
         for key, group in grouped:
