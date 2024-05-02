@@ -48,6 +48,8 @@ class CacheService:
     
     def groupDataDict(self, data: pd.DataFrame, groupKeys: list) -> dict:
         result = dict()
+        if data.empty:
+            return result
         print("Group keys are", groupKeys)
         print("New data is", data)
         sortedGroupKeys = sorted(groupKeys)
