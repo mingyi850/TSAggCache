@@ -49,12 +49,15 @@ Returns a json containing Table data from influxDB
 @app.route('/api/query', methods=['POST'])
 def query():
     #print(request.data.decode('utf-8'))
-    print(request.data)
+    #print(request.data)
     requestJson = json.loads(request.data)
-    result = cacheService.query(requestJson)
+    doTrace = requestJson.get('doTrace', False)
+    result, traceDict = cacheService.query(requestJson, doTrace = doTrace)
     result.reset_index(drop=True, inplace=True)
-    print("Got result", result)
-    return result.to_json()
+    dataDict = result.to_json(orient='records')
+    result = jsonify({"data": json.loads(dataDict), "trace": traceDict})
+    #print("Returning result", result)
+    return result
 
 @app.route('/api/reset', methods=['POST'])   
 def resetCache():

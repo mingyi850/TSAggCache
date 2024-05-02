@@ -45,7 +45,7 @@ influxBuilder = (InfluxQueryBuilder()
                .withTable("system_metrics")
                .withFilter(QueryFilter("platform", "mac_os").OR(QueryFilter("platform", "windows")))
                .withAggregate(QueryAggregation("10m", "mean", False))
-               .withRelativeRange('30m', None)
+               .withRelativeRange('300m', None)
                .withGroupKeys(["host", "platform"])
        )
 
@@ -122,20 +122,21 @@ def runSuiteCache(queryList):
     cacheUrlJson = "http://127.0.0.1:5000/api/query"
     startTime = time.time()
     cached_times = []
-    for query in queries:
-        queryJson = query.buildJson()
+    for query in queryList:
+        queryJson = query.buildJson(doTrace = False)
         queryTime = time.time()
         tableResp = requests.post(cacheUrlJson, json=queryJson)
         tableJson = tableResp.json()
-        tableDf = pd.read_json(json.dumps(tableJson), orient='records')
+        resultData = tableJson.get("data")
+        tableDf = pd.read_json(json.dumps(resultData), orient='records')
         endTime = time.time() - queryTime
         cached_times.append(endTime)
         print(tableDf)
     cacheLatency = time.time() - startTime
     return cacheLatency, cached_times
 
-cacheLatency, cached_times = runSuiteCache(queries)
-rawLatency, raw_times = runSuiteRaw(queries, client)
+cacheLatency, cached_times = runSuiteCache(testQueries)
+rawLatency, raw_times = runSuiteRaw(testQueries, client)
 
 # Execute the query via cache service
 

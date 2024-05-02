@@ -329,7 +329,7 @@ class InfluxQueryBuilder:
         queryString += self.getGroupByInflux()
         return queryString
     
-    def buildJson(self):
+    def buildJson(self, doTrace=False):
         assert self.bucket != "", "Bucket is required"
         assert not (self.range is None and self.relativeRange is None), "Range or relative range is required"
         range = self.range if self.range is not None else self.getRangeFromRelative()
@@ -342,7 +342,8 @@ class InfluxQueryBuilder:
             "yield": self.yield_name,
             "measurements": self.measurements,
             "table": self.table,
-            "groupKeys": self.groupKeys
+            "groupKeys": self.groupKeys,
+            "doTrace": doTrace
         }
         if self.aggregate is not None:
             queryJson["aggregate"] = self.aggregate.toJson()

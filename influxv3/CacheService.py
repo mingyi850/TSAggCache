@@ -1,6 +1,8 @@
 import TSCachev3
 from queryDSL import InfluxQueryBuilder, Range
 import copy
+import time
+from functools import partial
 from influxdb_client_3 import InfluxDBClient3
 import pandas as pd
 from TSCachev3 import SeriesGroup, Series
@@ -15,36 +17,54 @@ class CacheService:
     def __init__(self):
         self.cache = TSCachev3.TSCachev3()
         self.client = InfluxDBClient3(host=host, token=token, org=org)
-
-    def query(self, json):
+        
+    def withTrace(self, doTrace, traceDict, key, operation):
+        if not doTrace:
+            return operation()
+        start = time.time()
+        result = operation()
+        end = time.time()
+        traceDict[key] = end - start
+        return result
+    
+    def query(self, json, doTrace=False) -> Tuple[pd.DataFrame, Dict]:
+        traceDict = dict()
+        withTrace = partial(self.withTrace, doTrace, traceDict)
         queryDSL = InfluxQueryBuilder.fromJson(json) #Convert to query builder object
-        cachedResults = self.cache.get(queryDSL) #Check if a matching entry exists in cache based on table_aggFn_filter
-        cachedResults = self.checkGrouping(queryDSL, cachedResults)
-        cachedResults = self.checkAggWindow(queryDSL, cachedResults)
+        cachedResults = withTrace("CheckCache", lambda: self.findCacheMatch(queryDSL))
         additionalRange = self.checkAdditionalRange(queryDSL, cachedResults)
         if additionalRange is not None:
-            print("Additional Range is", additionalRange)
             (newRange, rangeType) = additionalRange
-            newQueryDSL = InfluxQueryBuilder.fromJson(json)
-            newQueryDSL = self.modifyQuery(newQueryDSL, cachedResults, newRange)
-            query = newQueryDSL.buildInfluxQlStr()
-            #print("Using query", query)
-            results = self.client.query(query=query, database=queryDSL.bucket, language="influxql", mode='pandas')
-            newSeries = self.combineResults(newQueryDSL, cachedResults, results, rangeType)
-            self.cache.set(newQueryDSL, newSeries)
-        
-        
-        # Now we want to give user back what they want
-        # - First we slice by time range they need
+            newQueryDSL, results = withTrace("InfluxQuery", lambda: self.queryAdditionalRange(json, newRange, cachedResults))
+            withTrace("CombineAndSet", lambda: self.setCombinedResults(newQueryDSL, cachedResults, results, rangeType))
+        result = withTrace("ReconstructResult", lambda: self.reConstructResult(queryDSL))
+        return result, traceDict
+    
+    def reConstructResult(self, queryDSL: InfluxQueryBuilder):
         newCachedResults = self.cache.get(queryDSL)
-        #print("New cached results is ", newCachedResults)
-        result = (newCachedResults
+        return (newCachedResults
                   .getSlicedSeries(queryDSL.range.start, queryDSL.range.end) #Slice by time range
                   .regroup(queryDSL.groupKeys, queryDSL.measurements) # regroup based on new groupings
                   .reAggregate(queryDSL.aggregate.getTimeWindowSeconds(), queryDSL.measurements) # downsample based on new aggInterval 
                   .filterMeasurements(queryDSL.measurements) # return only required columns
                   .getCombinedDataFrame()) #combine dataframe into one
-        return result
+    
+    def setCombinedResults(self, newQueryDSL: InfluxQueryBuilder, cachedResults: TSCachev3.Series, newResults: pd.DataFrame, rangeType: str) -> None:
+        newSeries = self.combineResults(newQueryDSL, cachedResults, newResults, rangeType)
+        self.cache.set(newQueryDSL, newSeries)
+    
+    def queryAdditionalRange(self, json, newRange: Range, cachedResults: Series) -> Tuple[InfluxQueryBuilder, pd.DataFrame]:
+        newQueryDSL = InfluxQueryBuilder.fromJson(json)
+        newQueryDSL = self.modifyQuery(newQueryDSL, cachedResults, newRange)
+        query = newQueryDSL.buildInfluxQlStr()
+        influxResults = self.client.query(query=query, database=newQueryDSL.bucket, language="influxql", mode='pandas')
+        return newQueryDSL, influxResults
+    
+    def findCacheMatch(self, queryDSL: InfluxQueryBuilder) -> TSCachev3.Series:
+        cachedResults = self.cache.get(queryDSL) #Check if a matching entry exists in cache based on table_aggFn_filter
+        cachedResults = self.checkGrouping(queryDSL, cachedResults)
+        cachedResults = self.checkAggWindow(queryDSL, cachedResults)
+        return cachedResults
     
     def groupDataDict(self, data: pd.DataFrame, groupKeys: list) -> dict:
         result = dict()
