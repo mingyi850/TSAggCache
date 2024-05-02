@@ -49,30 +49,39 @@ data = {
 
 while True:
   point = (
-    Point("cpu_usage")
+    Point("system_metrics")
     .tag("platform", "mac_os")
     .tag("host", "host1")
-    .field("value", psutil.cpu_percent())
+    .field("cpu_usage", psutil.cpu_percent())
+    .field("temperature", np.random.normal(20, 2))
+    .field("memory_usage", psutil.virtual_memory().percent)
   )
+
   point2 = (
-    Point("cpu_usage")
+    Point("system_metrics")
     .tag("platform", "windows")
     .tag("host", "host1")
     .field("value", psutil.cpu_percent() + np.random.normal(0, 10))
-
+    .field("temperature", np.random.normal(23, 3))
+    .field("memory_usage", psutil.virtual_memory().percent + np.random.normal(0, 8))
   )
+
   point3 = (
-    Point("cpu_usage")
+    Point("system_metrics")
     .tag("platform", "mac_os")
     .tag("host", "host2")
     .field("value", psutil.cpu_percent() - np.random.normal(0, 10))
+    .field("temperature", 5 + np.random.normal(20, 1))
+    .field("memory_usage", psutil.virtual_memory().percent - np.random.normal(0, 5))
   )
+
   point4 = (
-    Point("cpu_usage")
+    Point("system_metrics")
     .tag("platform", "windows")
     .tag("host", "host2")
     .field("value", psutil.cpu_percent() + np.random.normal(10, 20))
-
+    .field("temperature", 5 + np.random.normal(20, 3))
+    .field("memory_usage", psutil.virtual_memory().percent + np.random.normal(4, 16))
   )
   client.write(database=database, record=point)
   client.write(database=database, record=point2)
