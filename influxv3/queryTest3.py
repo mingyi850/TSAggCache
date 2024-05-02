@@ -99,18 +99,20 @@ influxBuilderReAggregatedAll = (InfluxQueryBuilder()
                .withGroupKeys(["platform"])
        )
 
-queries = [influxBuilder, influxBuilderDiffMeasurements, influxBuilderDiffExtendedRange, influxBuilderReAggregated, influxBuilderReAggregatedDouble, influxBuilderReAggregatedAll]
+testQueries = [influxBuilder, influxBuilderDiffMeasurements, influxBuilderDiffExtendedRange, influxBuilderReAggregated, influxBuilderReAggregatedDouble, influxBuilderReAggregatedAll]
 
 def runSuiteRaw(queryList, client):
     # Execute the query via client
     startTime = time.time()
     raw_times = []
+    results = []
     for query in queryList:
         queryTime = time.time()
         queryStr = query.buildInfluxQlStr()
         table = client.query(query=queryStr, database="Test", language="influxql", mode='pandas')
         endTime = time.time() - queryTime
         raw_times.append(endTime)
+        results.append(table)
         print(table)
     rawLatency = time.time() - startTime
     return rawLatency, raw_times

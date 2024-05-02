@@ -158,6 +158,9 @@ class RelativeRange:
             "fr": self.fr,
             "to": self.to
         }
+    
+    def __repr__(self) -> str:
+        return f"RelativeRange(fr: {self.fr}, to: {self.to})"
 
     @staticmethod
     def fromJson(json):
