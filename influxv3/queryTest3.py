@@ -59,6 +59,16 @@ influxBuilderReGrouped = (InfluxQueryBuilder()
                .withGroupKeys(["platform"])
        )
 
+influxBuilderReGrouped = (InfluxQueryBuilder()
+               .withBucket("Test")
+               .withMeasurements(["value2", "value3"])
+               .withTable("cpu_usage")
+               .withFilter(QueryFilter("platform", "mac_os").OR(QueryFilter("platform", "windows")))
+               .withAggregate(QueryAggregation("20m", "mean", False))
+               .withRelativeRange('30m', None)
+               .withGroupKeys(["platform"])
+       )
+
 queryStr = influxBuilder.buildInfluxQlStr()
 queryJson = influxBuilder.buildJson()
 
