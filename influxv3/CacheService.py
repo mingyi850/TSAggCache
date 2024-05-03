@@ -7,6 +7,7 @@ from influxdb_client_3 import InfluxDBClient3
 import pandas as pd
 from TSCachev3 import SeriesGroup, Series
 from typing import List, Set, Dict, Tuple
+import Utilsv3
 
 INFLUXDB_TOKEN="VJK1PL0-qDkTIpSgrtZ0vq4AG02OjpmOSoOa-yC0oB1x3PvZCk78In9zOAGZ0FXBNVkwoJ_yQD6YSZLx23WElA==" #TODO: Remove or swap
 token = INFLUXDB_TOKEN
@@ -17,22 +18,11 @@ class CacheService:
     def __init__(self):
         self.cache = TSCachev3.TSCachev3()
         self.client = InfluxDBClient3(host=host, token=token, org=org)
-        
-    def withTrace(self, doTrace, traceDict, key, operation):
-        if not doTrace:
-            return operation()
-        start = time.time()
-        result = operation()
-        end = time.time()
-        traceDict[key] = end - start
-        return result
     
     def query(self, json, doTrace=False) -> Tuple[pd.DataFrame, Dict]:
         traceDict = dict()
-        withTrace = partial(self.withTrace, doTrace, traceDict)
-        queryDSL = InfluxQueryBuilder.fromJson(json) #Convert to query builder object
-        cachedResults = withTrace("CheckCache", lambda: self.findCacheMatch(queryDSL))
-        additionalRange = self.checkAdditionalRange(queryDSL, cachedResults)
+        withTrace = partial(Utilsv3.withTrace, doTrace, traceDict)
+        queryDSL, cachedResults, additionalRange = withTrace("CheckCache", lambda: self.findCacheMatch(json))
         if additionalRange is not None:
             (newRange, rangeType) = additionalRange
             newQueryDSL, results = withTrace("InfluxQuery", lambda: self.queryAdditionalRange(json, newRange, cachedResults))
@@ -56,15 +46,20 @@ class CacheService:
     def queryAdditionalRange(self, json, newRange: Range, cachedResults: Series) -> Tuple[InfluxQueryBuilder, pd.DataFrame]:
         newQueryDSL = InfluxQueryBuilder.fromJson(json)
         newQueryDSL = self.modifyQuery(newQueryDSL, cachedResults, newRange)
+        #print("New Query", newQueryDSL.buildJson())
         query = newQueryDSL.buildInfluxQlStr()
         influxResults = self.client.query(query=query, database=newQueryDSL.bucket, language="influxql", mode='pandas')
         return newQueryDSL, influxResults
     
-    def findCacheMatch(self, queryDSL: InfluxQueryBuilder) -> TSCachev3.Series:
+    def findCacheMatch(self, json) -> Tuple[InfluxQueryBuilder, TSCachev3.Series]:
+        queryDSL = InfluxQueryBuilder.fromJson(json) #Convert to query builder object
         cachedResults = self.cache.get(queryDSL) #Check if a matching entry exists in cache based on table_aggFn_filter
         cachedResults = self.checkGrouping(queryDSL, cachedResults)
         cachedResults = self.checkAggWindow(queryDSL, cachedResults)
-        return cachedResults
+        #print("Got initial cache hit", cachedResults)
+        additionalRange = self.checkAdditionalRange(queryDSL, cachedResults)
+        #print(cachedResults, additionalRange)
+        return queryDSL, cachedResults, additionalRange 
     
     def groupDataDict(self, data: pd.DataFrame, groupKeys: list) -> dict:
         result = dict()
@@ -136,15 +131,16 @@ class CacheService:
             queryEnd = queryDSL.range.end
             cachedStart = cachedResults.rangeStart
             cachedEnd = cachedResults.rangeEnd
+            aggInterval = cachedResults.aggInterval
             # First case - mismatch or 2 additional queries needed - return whole query range
-            if cachedEnd < queryStart or cachedStart > queryEnd or (cachedStart > queryStart and cachedEnd < queryEnd):
+            if cachedEnd < queryStart or cachedStart > queryEnd or (cachedStart - aggInterval > queryStart and cachedEnd + aggInterval < queryEnd):
                 return (queryDSL.range, "full")
             # Second case - extra time needed at the start
-            elif cachedResults.rangeStart - cachedResults.aggInterval > queryDSL.range.start and cachedResults.rangeEnd >= queryDSL.range.end:
-                return (Range(queryDSL.range.start, cachedResults.rangeStart), "start")
+            elif cachedStart - aggInterval > queryStart and cachedEnd >= queryEnd:
+                return (Range(queryStart, cachedStart), "start")
             # Third case - extra time needed at the end
-            elif cachedResults.rangeEnd + cachedResults.aggInterval < queryDSL.range.end and cachedResults.rangeStart <= queryDSL.range.start:
-                return (Range(cachedResults.rangeEnd, queryDSL.range.end), "end")
+            elif cachedEnd + aggInterval < queryEnd and cachedStart <= queryStart:
+                return (Range(cachedEnd, queryEnd), "end")
             # Fourth case - results fully encapsulate query range
             else:
                 return None

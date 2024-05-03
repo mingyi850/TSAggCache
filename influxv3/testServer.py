@@ -2,6 +2,7 @@ import json
 from flask import Flask, jsonify, request
 from queryDSL import InfluxQueryBuilder, QueryAggregation, QueryFilter
 from CacheService import CacheService
+import Utilsv3
 
 token = "NVRAh0Hy9gLvSJVlIaYVRIP5MTktlqBHCOGxpgzIOHdSD-fu2vGjug5NmMcTv2QvH7BK6XG0tQvaoPXUWmuvLQ=="
 org = "Realtime"
@@ -46,6 +47,10 @@ Example:
 }
 Returns a json containing Table data from influxDB
 """
+def serializeResult(result):
+    result.reset_index(drop=True, inplace=True)
+    return result.to_json(orient='records')
+
 @app.route('/api/query', methods=['POST'])
 def query():
     #print(request.data.decode('utf-8'))
@@ -53,10 +58,10 @@ def query():
     requestJson = json.loads(request.data)
     doTrace = requestJson.get('doTrace', False)
     result, traceDict = cacheService.query(requestJson, doTrace = doTrace)
-    result.reset_index(drop=True, inplace=True)
-    dataDict = result.to_json(orient='records')
-    result = jsonify({"data": json.loads(dataDict), "trace": traceDict})
-    #print("Returning result", result)
+    
+    dataJson = Utilsv3.withTrace(doTrace, traceDict, "SerializeResult", lambda: serializeResult(result))
+    result = jsonify({"data": json.loads(dataJson), "trace": traceDict})
+    #print("Returning result", result.data)
     return result
 
 @app.route('/api/reset', methods=['POST'])   
