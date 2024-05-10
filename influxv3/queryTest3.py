@@ -1,16 +1,20 @@
-INFLUXDB_TOKEN="VJK1PL0-qDkTIpSgrtZ0vq4AG02OjpmOSoOa-yC0oB1x3PvZCk78In9zOAGZ0FXBNVkwoJ_yQD6YSZLx23WElA=="
-
 import os, time
 from influxdb_client_3 import InfluxDBClient3, Point
 import pandas as pd
 from queryDSL import InfluxQueryBuilder, QueryAggregation, QueryFilter
 import requests
 import json
+import configparser
 
+config = configparser.ConfigParser()
+config.read('cacheConfig.ini')
+cacheConfig = config['cache']
+port = cacheConfig.get('port', 5000)
 
-token = INFLUXDB_TOKEN
-org = "Realtime Big Data"
-host = "https://us-east-1-1.aws.cloud2.influxdata.com"
+influxConfig = config['influx']
+token = influxConfig.get('token')
+org = influxConfig.get('org', 'Realtime Big Data')
+host = influxConfig.get('host', 'https://us-east-1-1.aws.cloud2.influxdata.com')
 
 client = InfluxDBClient3(host=host, token=token, org=org)
 
@@ -175,3 +179,15 @@ print(pd.concat([groupData[0], groupData[3]]))
 groupByLatency = time.time() - currentTime
 print("Query took %.2f seconds" % latency)
 print("Group by took %.2f seconds" % groupByLatency)
+
+
+
+influxBuilder3 = (InfluxQueryBuilder()
+               .withBucket("Test")
+               .withMeasurements(["cpu_usage", "temperature"])
+               .withTable("system_metrics")
+               .withFilter(QueryFilter("platform", "mac_os").OR(QueryFilter("platform", "windows")))
+               .withAggregate(QueryAggregation("1m", "mean", False))
+               .withRelativeRange('300m', None)
+               .withGroupKeys(["host", "platform"])
+       )

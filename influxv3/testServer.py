@@ -3,25 +3,14 @@ from flask import Flask, jsonify, request
 from queryDSL import InfluxQueryBuilder, QueryAggregation, QueryFilter
 from CacheService import CacheService
 import Utilsv3
+import configparser
 
-token = "NVRAh0Hy9gLvSJVlIaYVRIP5MTktlqBHCOGxpgzIOHdSD-fu2vGjug5NmMcTv2QvH7BK6XG0tQvaoPXUWmuvLQ=="
-org = "Realtime"
-url = "http://localhost:8086"
-
-"""
-TODO: 
-1. Think of datastore to efficiently retrieve data from cache. Should be able to take slice of previous data easily.
-    a. Arrays? With each index corresponding to a timestamp.
-        i. Then we need to find way to index the array based on time. 
-        ii. for each entry received from previous data, we store in array and store the index of each entry.
-        iii. Client returns data in CSV format. Need to parse this into entries
-        iv. What about missing indicies which are technically in the DB? do we approximate or do we re-fetch?
-        v. Binary search to find time slices? 
-
-    b. Pandas dataframe?
-"""
-
-app = Flask('queryServer')
+config = configparser.ConfigParser()
+config.read('cacheConfig.ini')
+cacheConfig = config['cache']
+port = cacheConfig.get('port', 5000)
+name = cacheConfig.get('name', 'cacheService')
+app = Flask(name)
 app.request_class.charset = None
 
 queryCache = dict()
@@ -73,4 +62,4 @@ def resetCache():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port='5000')
+    app.run(debug=True, port=port)

@@ -3,10 +3,14 @@ import os, time
 from influxdb_client_3 import InfluxDBClient3, Point
 import numpy as np
 import psutil
+import configparser
 
-token = "VJK1PL0-qDkTIpSgrtZ0vq4AG02OjpmOSoOa-yC0oB1x3PvZCk78In9zOAGZ0FXBNVkwoJ_yQD6YSZLx23WElA=="
-org = "Realtime Big Data"
-host = "https://us-east-1-1.aws.cloud2.influxdata.com"
+config = configparser.ConfigParser()
+config.read('cacheConfig-Ming.ini')
+influxConfig = config['influx']
+token = influxConfig['token']
+org = influxConfig['org']
+host = influxConfig['host']
 
 client = InfluxDBClient3(host=host, token=token, org=org)
 

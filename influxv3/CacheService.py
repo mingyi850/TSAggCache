@@ -8,11 +8,15 @@ import pandas as pd
 from TSCachev3 import SeriesGroup, Series
 from typing import List, Set, Dict, Tuple
 import Utilsv3
+import configparser
 
-INFLUXDB_TOKEN="VJK1PL0-qDkTIpSgrtZ0vq4AG02OjpmOSoOa-yC0oB1x3PvZCk78In9zOAGZ0FXBNVkwoJ_yQD6YSZLx23WElA==" #TODO: Remove or swap
-token = INFLUXDB_TOKEN
-org = "Realtime Big Data"
-host = "https://us-east-1-1.aws.cloud2.influxdata.com"
+config = configparser.ConfigParser()
+config.read('cacheConfig.ini')
+
+influxConfig = config['influx']
+token = influxConfig['token']
+org = influxConfig['org']
+host = influxConfig['host']
 
 class CacheService:
     def __init__(self):
