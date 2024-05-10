@@ -1,2 +1,8 @@
 
 cacheConfig-Ming.ini
+*.pyc
+__pycache__/
+venv/
+*.egg-info/
+dist/
+build/
