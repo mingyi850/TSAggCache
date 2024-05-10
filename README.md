@@ -1,5 +1,6 @@
 # TSAgg Cache
 
+## Abstract
 Time-series databases are the backbone to modern monitoring systems. While time-series databases are typically optimized for fast reads, the increasing number of users of these databases and the need to analyze large amounts of correlated time series prompts the need for an efficient solution to reduce load on time series databases. We present TSAggCache, a platform-agnostic, in-memory caching solution which exploits the similarities in time-series queries, as well as the properties of aggregated time-series data to improve read performance of time-series queries and reduce the load on time-series databases. We have developed a translation DSL, efficient cache indexing structure, and layout which allows the re-use of cached data over multiple dimensions. Our experiments show that TSAggCache can significantly improve client query performance, reducing latency by up to 91% while providing correctness guarantees.
 
 ## Problem
@@ -90,3 +91,6 @@ We construct the cache as a Key-Value store, with each value stored as a tree. E
 
 ### Measurements and Tracing
 We provide tracing of operations to profile the time taken for each operation in the cache. This can be activated by providing argument `queryBuilder.buildJson(doTrace=True)` when building the request Json. The response object will contain a json which details the time taken for each operation in the cache.
+
+### Paper
+A writeup for the implementation details of the cache can be found [here](/TsAggCachePaper.pdf)
