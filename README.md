@@ -83,7 +83,6 @@ requestJson = queryBuilder.buildJson()
 response = requests.post(cacheUrlJson, json=queryJson)
 ```
 
-
 ## Utilities
 
 ### Cache Structure
